@@ -1,0 +1,17 @@
+{
+  "name": "comusic",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n web,relay -c blue,magenta \"npm run -w apps/web dev\" \"npm run -w apps/relay dev\"",
+    "build": "npm run -w apps/web build",
+    "dev:web": "npm run -w apps/web dev",
+    "dev:relay": "npm run -w apps/relay dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}

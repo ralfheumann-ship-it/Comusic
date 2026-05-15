@@ -51,9 +51,14 @@ export default function LoopContainer({
   const [preview, setPreview] = useState<{ startStep: number; lengthSteps: number } | null>(null)
   const draggedRef = useRef(false)
 
-  const songSteps = barsTotal * stepsPerBar
+  // barsTotal / stepsPerBar are no longer used as drag-time upper bounds — the lane
+  // auto-grows in the schema. We still suppress unused-prop warnings locally.
+  void barsTotal
+  void stepsPerBar
 
   const beginDrag = (e: React.PointerEvent, mode: DragMode) => {
+    // Hold Ctrl/Meta to pan the lane via TracksArea — let that handler take over.
+    if (e.ctrlKey || e.metaKey) return
     e.stopPropagation()
     const startX = e.clientX
     draggedRef.current = false
@@ -63,12 +68,10 @@ export default function LoopContainer({
       if (Math.abs(dx) > DRAG_THRESHOLD_PX) draggedRef.current = true
       const deltaSteps = Math.round(dx / STEP_WIDTH)
       if (mode === 'move') {
-        const maxStart = Math.max(0, songSteps - lengthSteps)
-        const newStart = Math.max(0, Math.min(maxStart, startStep + deltaSteps))
+        const newStart = Math.max(0, startStep + deltaSteps)
         setPreview({ startStep: newStart, lengthSteps })
       } else if (mode === 'resize-right') {
-        const maxLen = Math.max(MIN_LOOP_LENGTH_STEPS, songSteps - startStep)
-        const newLen = Math.max(MIN_LOOP_LENGTH_STEPS, Math.min(maxLen, lengthSteps + deltaSteps))
+        const newLen = Math.max(MIN_LOOP_LENGTH_STEPS, lengthSteps + deltaSteps)
         setPreview({ startStep, lengthSteps: newLen })
       } else {
         const rightEdge = startStep + lengthSteps
@@ -85,8 +88,7 @@ export default function LoopContainer({
       const deltaSteps = Math.round(dx / STEP_WIDTH)
       if (draggedRef.current) {
         if (mode === 'move' && deltaSteps !== 0) {
-          const maxStart = Math.max(0, songSteps - lengthSteps)
-          moveLoop(doc, trackId, loopId, Math.max(0, Math.min(maxStart, startStep + deltaSteps)))
+          moveLoop(doc, trackId, loopId, Math.max(0, startStep + deltaSteps))
         } else if (mode === 'resize-right' && deltaSteps !== 0) {
           resizeLoopRight(doc, trackId, loopId, lengthSteps + deltaSteps)
         } else if (mode === 'resize-left' && deltaSteps !== 0) {

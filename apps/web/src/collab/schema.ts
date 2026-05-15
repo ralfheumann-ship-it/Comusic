@@ -6,6 +6,7 @@ export const STEPS_PER_WHOLE_NOTE = 16
 export const DEFAULT_LOOP_LENGTH_BARS = 2
 export const MIN_LOOP_LENGTH_STEPS = 1
 export const DEFAULT_BARS = 8
+export const MAX_BARS = 256
 
 export type TimeSignature = readonly [number, number]
 export const DEFAULT_TIME_SIGNATURE: TimeSignature = [4, 4]
@@ -122,6 +123,15 @@ export function getStepsPerBeat(doc: Y.Doc): number {
 
 export function getSongSteps(doc: Y.Doc): number {
   return getBars(doc) * getStepsPerBar(doc)
+}
+
+function ensureBarsForSteps(doc: Y.Doc, neededSteps: number) {
+  const stepsPerBar = getStepsPerBar(doc)
+  if (stepsPerBar <= 0 || neededSteps <= 0) return
+  const project = getProjectMap(doc)
+  const currentBars = (project.get('bars') as number) ?? DEFAULT_BARS
+  const wantBars = Math.min(MAX_BARS, Math.ceil(neededSteps / stepsPerBar))
+  if (wantBars > currentBars) project.set('bars', wantBars)
 }
 
 export function initProject(doc: Y.Doc) {
@@ -254,10 +264,11 @@ export function addLoop(doc: Y.Doc, trackId: string, startStep: number): string 
   const loops = getTrackLoops(track)
   const id = nanoid(8)
   const length = DEFAULT_LOOP_LENGTH_BARS * getStepsPerBar(doc)
+  const start = Math.max(0, Math.round(startStep))
   doc.transact(() => {
     const loop = new Y.Map<unknown>()
     loop.set('id', id)
-    loop.set('startStep', Math.max(0, Math.round(startStep)))
+    loop.set('startStep', start)
     loop.set('lengthSteps', length)
     loop.set('instrumentId', 'square')
     const notes = new Y.Map<boolean>()
@@ -269,6 +280,7 @@ export function addLoop(doc: Y.Doc, trackId: string, startStep: number): string 
     loop.set('notes', notes)
     loop.set('pitches', pitches)
     loops.push([loop])
+    ensureBarsForSteps(doc, start + length)
   })
   return id
 }
@@ -301,9 +313,10 @@ export function duplicateLoop(doc: Y.Doc, trackId: string, loopId: string): stri
 
   const sourceStart = getLoopStartStep(source)
   const sourceLength = getLoopLengthSteps(source)
-  const songSteps = getSongSteps(doc)
+  const stepsPerBar = getStepsPerBar(doc)
+  const maxStartSteps = Math.max(0, MAX_BARS * stepsPerBar - sourceLength)
   const proposed = sourceStart + sourceLength
-  const clamped = Math.max(0, Math.min(proposed, Math.max(0, songSteps - sourceLength)))
+  const clamped = Math.max(0, Math.min(proposed, maxStartSteps))
 
   const id = nanoid(8)
   doc.transact(() => {
@@ -327,6 +340,7 @@ export function duplicateLoop(doc: Y.Doc, trackId: string, loopId: string): stri
     copy.set('notes', notes)
     copy.set('pitches', pitches)
     loops.push([copy])
+    ensureBarsForSteps(doc, clamped + sourceLength)
   })
   return id
 }
@@ -334,10 +348,14 @@ export function duplicateLoop(doc: Y.Doc, trackId: string, loopId: string): stri
 export function moveLoop(doc: Y.Doc, trackId: string, loopId: string, startStep: number) {
   const loop = findLoop(doc, trackId, loopId)
   if (!loop) return
-  const songSteps = getSongSteps(doc)
+  const stepsPerBar = getStepsPerBar(doc)
   const length = getLoopLengthSteps(loop)
-  const max = Math.max(0, songSteps - length)
-  loop.set('startStep', Math.max(0, Math.min(max, Math.round(startStep))))
+  const max = Math.max(0, MAX_BARS * stepsPerBar - length)
+  const start = Math.max(0, Math.min(max, Math.round(startStep)))
+  doc.transact(() => {
+    loop.set('startStep', start)
+    ensureBarsForSteps(doc, start + length)
+  })
 }
 
 export function resizeLoopRight(
@@ -348,10 +366,10 @@ export function resizeLoopRight(
 ) {
   const loop = findLoop(doc, trackId, loopId)
   if (!loop) return
-  const songSteps = getSongSteps(doc)
+  const stepsPerBar = getStepsPerBar(doc)
   const startStep = getLoopStartStep(loop)
   const oldLength = getLoopLengthSteps(loop)
-  const maxLength = Math.max(MIN_LOOP_LENGTH_STEPS, songSteps - startStep)
+  const maxLength = Math.max(MIN_LOOP_LENGTH_STEPS, MAX_BARS * stepsPerBar - startStep)
   const length = Math.max(MIN_LOOP_LENGTH_STEPS, Math.min(maxLength, Math.round(newLengthSteps)))
   if (length === oldLength) return
 
@@ -370,6 +388,7 @@ export function resizeLoopRight(
         pitches.delete(String(i))
       }
     }
+    ensureBarsForSteps(doc, startStep + length)
   })
 }
 

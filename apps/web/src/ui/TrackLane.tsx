@@ -53,6 +53,8 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
   // that would otherwise spawn a stray new loop.
   const onLanePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
+    // Hold Ctrl/Meta to pan the lane via TracksArea — don't spawn a loop.
+    if (e.ctrlKey || e.metaKey) return
     if (e.target !== laneRef.current) return
     const rect = laneRef.current.getBoundingClientRect()
     const bar = Math.floor((e.clientX - rect.left) / barWidth)
@@ -67,8 +69,8 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
   ].join(', ')
 
   return (
-    <div className="flex bg-zinc-900 border border-zinc-800 rounded overflow-hidden">
-      <div className="w-48 shrink-0 p-3 border-r border-zinc-800 flex items-center gap-2 min-w-0">
+    <div className="flex bg-zinc-900 border border-zinc-800 rounded">
+      <div className="w-48 shrink-0 p-3 border-r border-zinc-800 flex items-center gap-2 min-w-0 sticky left-0 z-20 bg-zinc-900 rounded-l">
         <span className="w-3 h-3 rounded-full shrink-0" style={{ background: color }} />
         <InlineEdit
           value={name}

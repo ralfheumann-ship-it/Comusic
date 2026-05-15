@@ -21,10 +21,23 @@ On the landing page, set your name (saved in your browser), then click **New pro
 - **Space** — play / stop (anywhere outside an input)
 - **Click** a step cell to toggle on/off
 - **Drag a cell up/down** to set its pitch
-- **Click** a track lane to add a loop at that bar
-- **Drag** a loop horizontally to reposition
+- **Click** an empty spot on a track lane to drop a new loop at that bar (default 2 bars / 32 sixteenth notes)
+- **Drag a loop's body** to reposition it; movement snaps to a sixteenth note
+- **Drag a loop's left or right edge** to resize it; growing adds empty notes, shrinking trims them. Dragging the left edge keeps the right edge fixed and shifts the existing notes so they stay at the same absolute time.
 - **Click** the project title or a track name to rename it
-- **Loop song** checkbox in the top bar — when on, playback restarts at the rightmost loop's right edge; when off, it stops there
+- **BPM** input in the top bar
+- **Meter** dropdown — choose 4/4, 3/4, 6/8 or 12/8. Existing notes keep their position in time; only the bar grouping and grid lines change.
+- **Loop song** checkbox — when on, playback restarts at the rightmost loop's right edge; when off, it stops there
+
+## Grid
+
+Each track lane shows three grid layers:
+
+- A faint vertical line every sixteenth note
+- A medium line every beat (in compound 6/8 and 12/8 this groups three eighth notes per beat)
+- A bright line every bar (12, 16 or 24 sixteenth notes wide depending on the meter)
+
+The note grid inside the loop editor lays out cells in `stepsPerBar` columns, so each row equals one bar in the current meter.
 
 ## Sharing a project as a file
 

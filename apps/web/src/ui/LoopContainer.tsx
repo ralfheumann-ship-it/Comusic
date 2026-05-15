@@ -1,9 +1,19 @@
 import { useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { useY } from '../collab/useY'
-import { duplicateLoop, moveLoop, removeLoop, type YLoop } from '../collab/schema'
+import {
+  duplicateLoop,
+  getLoopLengthSteps,
+  getLoopStartStep,
+  MIN_LOOP_LENGTH_STEPS,
+  moveLoop,
+  removeLoop,
+  resizeLoopLeft,
+  resizeLoopRight,
+  type YLoop
+} from '../collab/schema'
 import { getInstrumentLabel } from '../audio/instruments/registry'
-import { BAR_WIDTH } from './types'
+import { STEP_WIDTH } from './types'
 
 interface Props {
   doc: Y.Doc
@@ -11,12 +21,16 @@ interface Props {
   loop: YLoop
   color: string
   barsTotal: number
+  stepsPerBar: number
   muted: boolean
   onClick: () => void
   isSelected: boolean
 }
 
 const DRAG_THRESHOLD_PX = 4
+const HANDLE_PX = 6
+
+type DragMode = 'move' | 'resize-left' | 'resize-right'
 
 export default function LoopContainer({
   doc,
@@ -24,19 +38,22 @@ export default function LoopContainer({
   loop,
   color,
   barsTotal,
+  stepsPerBar,
   muted,
   onClick,
   isSelected
 }: Props) {
   const loopId = loop.get('id') as string
-  const startBar = useY(loop, () => loop.get('startBar') as number)
-  const lengthBars = useY(loop, () => loop.get('lengthBars') as number)
+  const startStep = useY(loop, () => getLoopStartStep(loop))
+  const lengthSteps = useY(loop, () => getLoopLengthSteps(loop))
   const instrumentId = useY(loop, () => loop.get('instrumentId') as string)
 
-  const [dragOffset, setDragOffset] = useState(0)
+  const [preview, setPreview] = useState<{ startStep: number; lengthSteps: number } | null>(null)
   const draggedRef = useRef(false)
 
-  const onPointerDown = (e: React.PointerEvent) => {
+  const songSteps = barsTotal * stepsPerBar
+
+  const beginDrag = (e: React.PointerEvent, mode: DragMode) => {
     e.stopPropagation()
     const startX = e.clientX
     draggedRef.current = false
@@ -44,22 +61,41 @@ export default function LoopContainer({
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - startX
       if (Math.abs(dx) > DRAG_THRESHOLD_PX) draggedRef.current = true
-      setDragOffset(dx)
+      const deltaSteps = Math.round(dx / STEP_WIDTH)
+      if (mode === 'move') {
+        const maxStart = Math.max(0, songSteps - lengthSteps)
+        const newStart = Math.max(0, Math.min(maxStart, startStep + deltaSteps))
+        setPreview({ startStep: newStart, lengthSteps })
+      } else if (mode === 'resize-right') {
+        const maxLen = Math.max(MIN_LOOP_LENGTH_STEPS, songSteps - startStep)
+        const newLen = Math.max(MIN_LOOP_LENGTH_STEPS, Math.min(maxLen, lengthSteps + deltaSteps))
+        setPreview({ startStep, lengthSteps: newLen })
+      } else {
+        const rightEdge = startStep + lengthSteps
+        const minStart = 0
+        const maxStart = rightEdge - MIN_LOOP_LENGTH_STEPS
+        const newStart = Math.max(minStart, Math.min(maxStart, startStep + deltaSteps))
+        setPreview({ startStep: newStart, lengthSteps: rightEdge - newStart })
+      }
     }
     const onUp = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       const dx = ev.clientX - startX
+      const deltaSteps = Math.round(dx / STEP_WIDTH)
       if (draggedRef.current) {
-        const deltaBars = Math.round(dx / BAR_WIDTH)
-        if (deltaBars !== 0) {
-          const max = Math.max(0, barsTotal - lengthBars)
-          moveLoop(doc, trackId, loopId, Math.max(0, Math.min(max, startBar + deltaBars)))
+        if (mode === 'move' && deltaSteps !== 0) {
+          const maxStart = Math.max(0, songSteps - lengthSteps)
+          moveLoop(doc, trackId, loopId, Math.max(0, Math.min(maxStart, startStep + deltaSteps)))
+        } else if (mode === 'resize-right' && deltaSteps !== 0) {
+          resizeLoopRight(doc, trackId, loopId, lengthSteps + deltaSteps)
+        } else if (mode === 'resize-left' && deltaSteps !== 0) {
+          resizeLoopLeft(doc, trackId, loopId, startStep + deltaSteps)
         }
-      } else {
+      } else if (mode === 'move') {
         onClick()
       }
-      setDragOffset(0)
+      setPreview(null)
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -75,21 +111,38 @@ export default function LoopContainer({
     duplicateLoop(doc, trackId, loopId)
   }
 
+  const displayStart = preview?.startStep ?? startStep
+  const displayLength = preview?.lengthSteps ?? lengthSteps
+  const dragging = preview !== null
+
   return (
     <div
-      onPointerDown={onPointerDown}
-      className={`absolute top-2 bottom-2 rounded cursor-grab active:cursor-grabbing select-none flex items-center justify-between px-2 text-xs font-mono text-zinc-950 ${
+      onPointerDown={(e) => beginDrag(e, 'move')}
+      className={`absolute top-2 bottom-2 rounded cursor-grab active:cursor-grabbing select-none flex items-center justify-between text-xs font-mono text-zinc-950 ${
         isSelected ? 'ring-2 ring-zinc-100' : ''
       }`}
       style={{
-        left: startBar * BAR_WIDTH + dragOffset,
-        width: lengthBars * BAR_WIDTH - 4,
+        left: displayStart * STEP_WIDTH,
+        width: Math.max(STEP_WIDTH, displayLength * STEP_WIDTH - 1),
         background: color,
-        opacity: muted ? 0.4 : dragOffset !== 0 ? 0.85 : 1
+        opacity: muted ? 0.4 : dragging ? 0.85 : 1
       }}
     >
-      <span className="truncate">{getInstrumentLabel(instrumentId)}</span>
-      <div className="flex items-center gap-1 shrink-0">
+      <div
+        onPointerDown={(e) => beginDrag(e, 'resize-left')}
+        className="absolute left-0 top-0 bottom-0 cursor-ew-resize"
+        style={{ width: HANDLE_PX }}
+        title="Drag to resize loop start"
+      />
+      <div
+        onPointerDown={(e) => beginDrag(e, 'resize-right')}
+        className="absolute right-0 top-0 bottom-0 cursor-ew-resize"
+        style={{ width: HANDLE_PX }}
+        title="Drag to resize loop end"
+      />
+
+      <span className="truncate px-2 pl-2.5">{getInstrumentLabel(instrumentId)}</span>
+      <div className="flex items-center gap-1 shrink-0 pr-2.5">
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onClick={onDuplicate}

@@ -3,9 +3,11 @@ import { createPortal } from 'react-dom'
 import * as Y from 'yjs'
 import { useY } from '../collab/useY'
 import {
+  getLoopLengthSteps,
   getLoopNotes,
   getLoopPitches,
-  NOTES_PER_LOOP,
+  getProjectMap,
+  getStepsPerBar,
   PITCHES,
   setNotePitch,
   toggleNote,
@@ -22,7 +24,6 @@ interface Props {
   pitched: boolean
 }
 
-const COLS = 8
 const MOVE_THRESHOLD_PX = 6
 const PITCH_STEP_PX = 10
 
@@ -51,19 +52,24 @@ export default function NoteGrid({ doc, trackId, loop, color, pitched }: Props) 
   const loopId = loop.get('id') as string
   const notesMap = getLoopNotes(loop)
   const pitchesMap = getLoopPitches(loop)
+  const lengthSteps = useY(loop, () => getLoopLengthSteps(loop))
+  const stepsPerBar = useY(getProjectMap(doc), () => getStepsPerBar(doc))
+  const cols = Math.max(1, stepsPerBar)
 
-  const notes = useY<boolean[]>(notesMap, () =>
-    Array.from(
-      { length: NOTES_PER_LOOP },
-      (_, i) => (notesMap?.get(String(i)) as boolean | undefined) ?? false
-    )
-  )
-  const pitches = useY<string[]>(pitchesMap, () =>
-    Array.from(
-      { length: NOTES_PER_LOOP },
-      (_, i) => (pitchesMap?.get(String(i)) as string | undefined) ?? 'C4'
-    )
-  )
+  // Read full Y.Map snapshots so the useY read closure does not capture lengthSteps —
+  // observers are registered only when the target ref changes, so the captured closure
+  // is from first render. Snapshotting keeps the read independent of length, and we
+  // derive the array per-render below.
+  const notesSnapshot = useY<Record<string, boolean>>(notesMap, () => {
+    const out: Record<string, boolean> = {}
+    if (notesMap) notesMap.forEach((v, k) => { out[k] = !!v })
+    return out
+  })
+  const pitchesSnapshot = useY<Record<string, string>>(pitchesMap, () => {
+    const out: Record<string, string> = {}
+    if (pitchesMap) pitchesMap.forEach((v, k) => { out[k] = v as string })
+    return out
+  })
   const step = usePlayhead((s) => s.steps[loopId] ?? -1)
 
   const [edit, setEdit] = useState<PitchEdit | null>(null)
@@ -73,7 +79,8 @@ export default function NoteGrid({ doc, trackId, loop, color, pitched }: Props) 
     if (g.entered) return
     g.entered = true
     g.entryY = atY
-    if (!notes[g.cellIndex]) toggleNote(doc, trackId, loopId, g.cellIndex)
+    const wasActive = notesSnapshot[String(g.cellIndex)] ?? false
+    if (!wasActive) toggleNote(doc, trackId, loopId, g.cellIndex)
     setEdit({ index: g.cellIndex, pitch: g.initialPitch, cellRect: g.cellRect })
     previewNote(trackId, loopId, g.initialPitch)
   }
@@ -83,7 +90,7 @@ export default function NoteGrid({ doc, trackId, loop, color, pitched }: Props) 
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
     const cellRect = e.currentTarget.getBoundingClientRect()
-    const initialPitch = pitches[i] ?? 'C4'
+    const initialPitch = pitchesSnapshot[String(i)] ?? 'C4'
     const initialIdx = Math.max(0, PITCHES.indexOf(initialPitch))
 
     gestureRef.current = {
@@ -157,10 +164,12 @@ export default function NoteGrid({ doc, trackId, loop, color, pitched }: Props) 
     <>
       <div
         className="grid gap-1"
-        style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
       >
-        {Array.from({ length: NOTES_PER_LOOP }, (_, i) => {
-          const active = notes[i] ?? false
+        {Array.from({ length: lengthSteps }, (_, i) => {
+          const key = String(i)
+          const active = notesSnapshot[key] ?? false
+          const pitch = pitchesSnapshot[key] ?? 'C4'
           const isHead = step === i
           const isEditing = edit?.index === i
           return (
@@ -180,7 +189,7 @@ export default function NoteGrid({ doc, trackId, loop, color, pitched }: Props) 
               title={
                 pitched
                   ? active
-                    ? pitches[i]
+                    ? pitch
                     : 'click to activate · drag up/down to pitch'
                   : active
                     ? 'click to remove'
@@ -188,7 +197,7 @@ export default function NoteGrid({ doc, trackId, loop, color, pitched }: Props) 
               }
             >
               {active && pitched && (
-                <span className="text-[9px] font-mono text-zinc-950">{pitches[i]}</span>
+                <span className="text-[9px] font-mono text-zinc-950">{pitch}</span>
               )}
             </button>
           )

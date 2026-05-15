@@ -3,4 +3,4 @@ export interface LoopSelection {
   loopId: string
 }
 
-export const BAR_WIDTH = 96
+export const STEP_WIDTH = 6

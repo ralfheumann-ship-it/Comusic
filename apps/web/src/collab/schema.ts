@@ -2,9 +2,20 @@ import * as Y from 'yjs'
 import { nanoid } from 'nanoid'
 
 export const PROJECT_KEY = 'project'
-export const NOTES_PER_LOOP = 32
+export const STEPS_PER_WHOLE_NOTE = 16
 export const DEFAULT_LOOP_LENGTH_BARS = 2
+export const MIN_LOOP_LENGTH_STEPS = 1
 export const DEFAULT_BARS = 8
+
+export type TimeSignature = readonly [number, number]
+export const DEFAULT_TIME_SIGNATURE: TimeSignature = [4, 4]
+
+export const TIME_SIGNATURE_OPTIONS: TimeSignature[] = [
+  [4, 4],
+  [3, 4],
+  [6, 8],
+  [12, 8]
+]
 
 export const TRACK_COLORS = [
   '#f43f5e',
@@ -49,6 +60,14 @@ export function getLoopPitches(loop: YLoop): Y.Map<string> {
   return loop.get('pitches') as Y.Map<string>
 }
 
+export function getLoopStartStep(loop: YLoop): number {
+  return (loop.get('startStep') as number) ?? 0
+}
+
+export function getLoopLengthSteps(loop: YLoop): number {
+  return (loop.get('lengthSteps') as number) ?? (DEFAULT_LOOP_LENGTH_BARS * STEPS_PER_WHOLE_NOTE)
+}
+
 export function getNoteActive(loop: YLoop, index: number): boolean {
   const m = getLoopNotes(loop)
   if (!m) return false
@@ -65,6 +84,46 @@ export function getBars(doc: Y.Doc): number {
   return (getProjectMap(doc).get('bars') as number) ?? DEFAULT_BARS
 }
 
+export function getTimeSignature(doc: Y.Doc): TimeSignature {
+  const raw = getProjectMap(doc).get('timeSignature') as
+    | { 0?: number; 1?: number }
+    | number[]
+    | undefined
+  if (Array.isArray(raw) && raw.length === 2 && typeof raw[0] === 'number' && typeof raw[1] === 'number') {
+    return [raw[0], raw[1]]
+  }
+  return DEFAULT_TIME_SIGNATURE
+}
+
+export function setTimeSignature(doc: Y.Doc, ts: TimeSignature) {
+  const [n, d] = ts
+  if (!Number.isFinite(n) || !Number.isFinite(d) || n <= 0 || d <= 0) return
+  getProjectMap(doc).set('timeSignature', [n, d])
+}
+
+export function stepsPerBarFor(ts: TimeSignature): number {
+  const [n, d] = ts
+  return Math.round(n * (STEPS_PER_WHOLE_NOTE / d))
+}
+
+export function stepsPerBeatFor(ts: TimeSignature): number {
+  const [n, d] = ts
+  const isCompound = d === 8 && n >= 6 && n % 3 === 0
+  return isCompound ? 6 : Math.round(STEPS_PER_WHOLE_NOTE / d)
+}
+
+export function getStepsPerBar(doc: Y.Doc): number {
+  return stepsPerBarFor(getTimeSignature(doc))
+}
+
+export function getStepsPerBeat(doc: Y.Doc): number {
+  return stepsPerBeatFor(getTimeSignature(doc))
+}
+
+export function getSongSteps(doc: Y.Doc): number {
+  return getBars(doc) * getStepsPerBar(doc)
+}
+
 export function initProject(doc: Y.Doc) {
   const project = getProjectMap(doc)
   doc.transact(() => {
@@ -73,6 +132,8 @@ export function initProject(doc: Y.Doc) {
     if (project.get('bars') === undefined) project.set('bars', DEFAULT_BARS)
     if (project.get('title') === undefined) project.set('title', 'Untitled')
     if (project.get('loopSong') === undefined) project.set('loopSong', true)
+    if (project.get('timeSignature') === undefined)
+      project.set('timeSignature', [DEFAULT_TIME_SIGNATURE[0], DEFAULT_TIME_SIGNATURE[1]])
   })
 }
 
@@ -92,20 +153,25 @@ export function setLoopSong(doc: Y.Doc, value: boolean) {
   getProjectMap(doc).set('loopSong', value)
 }
 
-export function getSongEndBars(doc: Y.Doc): number {
+export function getSongEndSteps(doc: Y.Doc): number {
   const tracks = getTracks(doc)
   let end = 0
   for (let i = 0; i < tracks.length; i++) {
     const loops = getTrackLoops(tracks.get(i))
     for (let j = 0; j < loops.length; j++) {
       const l = loops.get(j)
-      const start = (l.get('startBar') as number) ?? 0
-      const len = (l.get('lengthBars') as number) ?? 0
+      const start = getLoopStartStep(l)
+      const len = getLoopLengthSteps(l)
       const e = start + len
       if (e > end) end = e
     }
   }
   return end
+}
+
+export function getSongEndBars(doc: Y.Doc): number {
+  const spb = getStepsPerBar(doc)
+  return spb > 0 ? getSongEndSteps(doc) / spb : 0
 }
 
 export function getBpm(doc: Y.Doc): number {
@@ -182,20 +248,21 @@ export function removeTrack(doc: Y.Doc, trackId: string) {
   }
 }
 
-export function addLoop(doc: Y.Doc, trackId: string, startBar: number): string | null {
+export function addLoop(doc: Y.Doc, trackId: string, startStep: number): string | null {
   const track = findTrack(doc, trackId)
   if (!track) return null
   const loops = getTrackLoops(track)
   const id = nanoid(8)
+  const length = DEFAULT_LOOP_LENGTH_BARS * getStepsPerBar(doc)
   doc.transact(() => {
     const loop = new Y.Map<unknown>()
     loop.set('id', id)
-    loop.set('startBar', Math.max(0, Math.round(startBar)))
-    loop.set('lengthBars', DEFAULT_LOOP_LENGTH_BARS)
+    loop.set('startStep', Math.max(0, Math.round(startStep)))
+    loop.set('lengthSteps', length)
     loop.set('instrumentId', 'square')
     const notes = new Y.Map<boolean>()
     const pitches = new Y.Map<string>()
-    for (let i = 0; i < NOTES_PER_LOOP; i++) {
+    for (let i = 0; i < length; i++) {
       notes.set(String(i), false)
       pitches.set(String(i), 'C4')
     }
@@ -232,18 +299,18 @@ export function duplicateLoop(doc: Y.Doc, trackId: string, loopId: string): stri
   }
   if (!source) return null
 
-  const sourceStart = (source.get('startBar') as number) ?? 0
-  const sourceLength = (source.get('lengthBars') as number) ?? DEFAULT_LOOP_LENGTH_BARS
-  const totalBars = getBars(doc)
+  const sourceStart = getLoopStartStep(source)
+  const sourceLength = getLoopLengthSteps(source)
+  const songSteps = getSongSteps(doc)
   const proposed = sourceStart + sourceLength
-  const clamped = Math.max(0, Math.min(proposed, Math.max(0, totalBars - sourceLength)))
+  const clamped = Math.max(0, Math.min(proposed, Math.max(0, songSteps - sourceLength)))
 
   const id = nanoid(8)
   doc.transact(() => {
     const copy = new Y.Map<unknown>()
     copy.set('id', id)
-    copy.set('startBar', clamped)
-    copy.set('lengthBars', sourceLength)
+    copy.set('startStep', clamped)
+    copy.set('lengthSteps', sourceLength)
     copy.set('instrumentId', (source.get('instrumentId') as string) ?? 'square')
     if (source.get('pulseWidth') !== undefined) {
       copy.set('pulseWidth', source.get('pulseWidth'))
@@ -252,7 +319,7 @@ export function duplicateLoop(doc: Y.Doc, trackId: string, loopId: string): stri
     const sourcePitches = source.get('pitches') as Y.Map<string> | undefined
     const notes = new Y.Map<boolean>()
     const pitches = new Y.Map<string>()
-    for (let i = 0; i < NOTES_PER_LOOP; i++) {
+    for (let i = 0; i < sourceLength; i++) {
       const key = String(i)
       notes.set(key, ((sourceNotes?.get(key) as boolean | undefined) ?? false))
       pitches.set(key, ((sourcePitches?.get(key) as string | undefined) ?? 'C4'))
@@ -264,11 +331,113 @@ export function duplicateLoop(doc: Y.Doc, trackId: string, loopId: string): stri
   return id
 }
 
-export function moveLoop(doc: Y.Doc, trackId: string, loopId: string, startBar: number) {
+export function moveLoop(doc: Y.Doc, trackId: string, loopId: string, startStep: number) {
   const loop = findLoop(doc, trackId, loopId)
   if (!loop) return
-  const max = Math.max(0, getBars(doc) - (loop.get('lengthBars') as number))
-  loop.set('startBar', Math.max(0, Math.min(max, Math.round(startBar))))
+  const songSteps = getSongSteps(doc)
+  const length = getLoopLengthSteps(loop)
+  const max = Math.max(0, songSteps - length)
+  loop.set('startStep', Math.max(0, Math.min(max, Math.round(startStep))))
+}
+
+export function resizeLoopRight(
+  doc: Y.Doc,
+  trackId: string,
+  loopId: string,
+  newLengthSteps: number
+) {
+  const loop = findLoop(doc, trackId, loopId)
+  if (!loop) return
+  const songSteps = getSongSteps(doc)
+  const startStep = getLoopStartStep(loop)
+  const oldLength = getLoopLengthSteps(loop)
+  const maxLength = Math.max(MIN_LOOP_LENGTH_STEPS, songSteps - startStep)
+  const length = Math.max(MIN_LOOP_LENGTH_STEPS, Math.min(maxLength, Math.round(newLengthSteps)))
+  if (length === oldLength) return
+
+  doc.transact(() => {
+    loop.set('lengthSteps', length)
+    const notes = getLoopNotes(loop)
+    const pitches = getLoopPitches(loop)
+    if (length > oldLength) {
+      for (let i = oldLength; i < length; i++) {
+        notes.set(String(i), false)
+        pitches.set(String(i), 'C4')
+      }
+    } else {
+      for (let i = length; i < oldLength; i++) {
+        notes.delete(String(i))
+        pitches.delete(String(i))
+      }
+    }
+  })
+}
+
+export function resizeLoopLeft(
+  doc: Y.Doc,
+  trackId: string,
+  loopId: string,
+  newStartStep: number
+) {
+  const loop = findLoop(doc, trackId, loopId)
+  if (!loop) return
+  const oldStart = getLoopStartStep(loop)
+  const oldLength = getLoopLengthSteps(loop)
+  const rightEdge = oldStart + oldLength
+  const minStart = 0
+  const maxStart = rightEdge - MIN_LOOP_LENGTH_STEPS
+  const start = Math.max(minStart, Math.min(maxStart, Math.round(newStartStep)))
+  if (start === oldStart) return
+
+  const newLength = rightEdge - start
+  const delta = start - oldStart // positive: shrunk from left; negative: grown from left
+
+  doc.transact(() => {
+    const notes = getLoopNotes(loop)
+    const pitches = getLoopPitches(loop)
+
+    if (delta > 0) {
+      // shrinking: drop the first `delta` notes; shift indices [delta..oldLength-1] -> [0..newLength-1]
+      const movedNotes: boolean[] = []
+      const movedPitches: string[] = []
+      for (let i = delta; i < oldLength; i++) {
+        movedNotes.push(((notes.get(String(i)) as boolean | undefined) ?? false))
+        movedPitches.push(((pitches.get(String(i)) as string | undefined) ?? 'C4'))
+      }
+      for (let i = 0; i < oldLength; i++) {
+        notes.delete(String(i))
+        pitches.delete(String(i))
+      }
+      for (let i = 0; i < movedNotes.length; i++) {
+        notes.set(String(i), movedNotes[i])
+        pitches.set(String(i), movedPitches[i])
+      }
+    } else {
+      // growing: prepend (-delta) empty notes; shift existing [0..oldLength-1] -> [-delta..newLength-1]
+      const shift = -delta
+      const movedNotes: boolean[] = []
+      const movedPitches: string[] = []
+      for (let i = 0; i < oldLength; i++) {
+        movedNotes.push(((notes.get(String(i)) as boolean | undefined) ?? false))
+        movedPitches.push(((pitches.get(String(i)) as string | undefined) ?? 'C4'))
+      }
+      for (let i = 0; i < oldLength; i++) {
+        notes.delete(String(i))
+        pitches.delete(String(i))
+      }
+      for (let i = 0; i < shift; i++) {
+        notes.set(String(i), false)
+        pitches.set(String(i), 'C4')
+      }
+      for (let i = 0; i < movedNotes.length; i++) {
+        notes.set(String(shift + i), movedNotes[i])
+        pitches.set(String(shift + i), movedPitches[i])
+      }
+    }
+
+    loop.set('startStep', start)
+    loop.set('lengthSteps', newLength)
+  })
 }
 
 export function setLoopInstrument(doc: Y.Doc, trackId: string, loopId: string, instrumentId: string) {
@@ -289,9 +458,9 @@ export function setLoopPulseWidth(doc: Y.Doc, trackId: string, loopId: string, w
 }
 
 export function toggleNote(doc: Y.Doc, trackId: string, loopId: string, index: number) {
-  if (index < 0 || index >= NOTES_PER_LOOP) return
   const loop = findLoop(doc, trackId, loopId)
   if (!loop) return
+  if (index < 0 || index >= getLoopLengthSteps(loop)) return
   const notes = getLoopNotes(loop)
   if (!notes) return
   const key = String(index)
@@ -303,17 +472,18 @@ export function clearLoopNotes(doc: Y.Doc, trackId: string, loopId: string) {
   if (!loop) return
   const notes = getLoopNotes(loop)
   if (!notes) return
+  const length = getLoopLengthSteps(loop)
   doc.transact(() => {
-    for (let i = 0; i < NOTES_PER_LOOP; i++) {
+    for (let i = 0; i < length; i++) {
       notes.set(String(i), false)
     }
   })
 }
 
 export function setNotePitch(doc: Y.Doc, trackId: string, loopId: string, index: number, pitch: string) {
-  if (index < 0 || index >= NOTES_PER_LOOP) return
   const loop = findLoop(doc, trackId, loopId)
   if (!loop) return
+  if (index < 0 || index >= getLoopLengthSteps(loop)) return
   const pitches = getLoopPitches(loop)
   if (!pitches) return
   pitches.set(String(index), pitch)

@@ -6,7 +6,8 @@ import {
   getLoopNotes,
   getLoopPitches,
   getLoopPulseWidth,
-  NOTES_PER_LOOP,
+  getLoopStartStep,
+  getLoopLengthSteps,
   type YLoop,
   type YTrack
 } from '../collab/schema'
@@ -24,6 +25,9 @@ interface LoopRunner {
   previewInstrument: Instrument | null
   previewLastTime: number
   observer: () => void
+  sequenceLength: number
+  instrumentId: string
+  pulseWidth: number
 }
 
 interface TrackRunner {
@@ -39,8 +43,6 @@ let tracksArr: Y.Array<YTrack> | null = null
 let tracksObserver: (() => void) | null = null
 let doc: Y.Doc | null = null
 
-const STEP_INDEXES = Array.from({ length: NOTES_PER_LOOP }, (_, i) => i)
-
 function buildLoopRunner(loopMap: YLoop, trackMap: YTrack): LoopRunner {
   const runner: LoopRunner = {
     loopId: loopMap.get('id') as string,
@@ -52,57 +54,89 @@ function buildLoopRunner(loopMap: YLoop, trackMap: YTrack): LoopRunner {
     instrument: null,
     previewInstrument: null,
     previewLastTime: 0,
-    observer: () => rebuildSequence(runner)
+    sequenceLength: 0,
+    instrumentId: '',
+    pulseWidth: NaN,
+    observer: () => onLoopChange(runner)
   }
   loopMap.observe(runner.observer)
+  rebuildInstrument(runner)
   rebuildSequence(runner)
   return runner
 }
 
-function rebuildSequence(runner: LoopRunner) {
-  runner.sequence?.dispose()
+function onLoopChange(runner: LoopRunner) {
+  const instrumentId = runner.loopMap.get('instrumentId') as string
+  const pulseWidth = getLoopPulseWidth(runner.loopMap)
+  const length = getLoopLengthSteps(runner.loopMap)
+
+  if (instrumentId !== runner.instrumentId || pulseWidth !== runner.pulseWidth) {
+    rebuildInstrument(runner)
+  }
+  if (length !== runner.sequenceLength) {
+    rebuildSequence(runner)
+  }
+  // startStep changes are picked up dynamically inside the sequence callback —
+  // no rebuild needed, which is important so we don't introduce audio glitches
+  // when the user simply drags a loop along the timeline.
+}
+
+function rebuildInstrument(runner: LoopRunner) {
   runner.instrument?.dispose()
   runner.previewInstrument?.dispose()
 
   const instrumentId = runner.loopMap.get('instrumentId') as string
-  const startBar = (runner.loopMap.get('startBar') as number) ?? 0
+  const pulseWidth = getLoopPulseWidth(runner.loopMap)
   const factory = getInstrument(instrumentId)
-  const params = { pulseWidth: getLoopPulseWidth(runner.loopMap) }
+  const params = { pulseWidth }
 
   runner.instrument = factory(params)
   runner.previewInstrument = factory(params)
   runner.previewLastTime = 0
-  const notes = runner.notes
-  const pitches = runner.pitches
-  const loopId = runner.loopId
-  const inst = runner.instrument
+  runner.instrumentId = instrumentId
+  runner.pulseWidth = pulseWidth
+}
 
+function rebuildSequence(runner: LoopRunner) {
+  runner.sequence?.dispose()
+
+  const loopId = runner.loopId
   const trackMap = runner.trackMap
   const loopMap = runner.loopMap
 
+  const length = Math.max(1, getLoopLengthSteps(loopMap))
+  runner.sequenceLength = length
+  const stepIndexes = Array.from({ length }, (_, i) => i)
+
   runner.sequence = new Tone.Sequence(
-    (time, index) => {
-      const start = (loopMap.get('startBar') as number) ?? 0
-      const length = (loopMap.get('lengthBars') as number) ?? 2
+    (time) => {
+      const start = getLoopStartStep(loopMap)
+      const len = getLoopLengthSteps(loopMap)
+      const stepDurationTicks = Tone.Transport.PPQ / 4
       const ticks = Tone.Transport.getTicksAtTime(time)
-      const bars = ticks / Tone.Transport.PPQ / 4
-      if (bars < start - 1e-6 || bars >= start + length - 1e-6) {
+      const songStep = Math.round(ticks / stepDurationTicks)
+      const offset = songStep - start
+      if (offset < 0 || offset >= len) {
         Tone.Draw.schedule(() => clearPlayheadStep(loopId), time)
         return
       }
 
       const muted = (trackMap.get('muted') as boolean) ?? false
       if (!muted) {
-        const key = String(index)
-        const active = notes ? ((notes.get(key) as boolean | undefined) ?? false) : false
-        if (active) {
-          const p = pitches ? (pitches.get(key) as string | undefined) : undefined
-          inst.trigger(time, p ?? 'C4')
+        const key = String(offset)
+        const active = runner.notes
+          ? ((runner.notes.get(key) as boolean | undefined) ?? false)
+          : false
+        if (active && runner.instrument) {
+          const p = runner.pitches
+            ? (runner.pitches.get(key) as string | undefined)
+            : undefined
+          runner.instrument.trigger(time, p ?? 'C4')
         }
       }
-      Tone.Draw.schedule(() => setPlayheadStep(loopId, index), time)
+      Tone.Draw.schedule(() => setPlayheadStep(loopId, offset), time)
     },
-    STEP_INDEXES,
+    stepIndexes,
     '16n'
   )
   runner.sequence.start(0)

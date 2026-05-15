@@ -6,11 +6,14 @@ import {
   getIsPlaying,
   getLoopSong,
   getProjectMap,
+  getTimeSignature,
   getTitle,
   setBpm,
   setIsPlaying,
   setLoopSong,
-  setTitle
+  setTimeSignature,
+  setTitle,
+  TIME_SIGNATURE_OPTIONS
 } from '../collab/schema'
 import { isAudioStarted, onAudioStartedChange, startAudio } from '../audio/engine'
 import Presence from './Presence'
@@ -30,6 +33,8 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
   const playing = useY(project, () => getIsPlaying(doc))
   const title = useY(project, () => getTitle(doc))
   const loopSong = useY(project, () => getLoopSong(doc))
+  const timeSig = useY(project, () => getTimeSignature(doc))
+  const timeSigKey = `${timeSig[0]}/${timeSig[1]}`
   const [audioOn, setAudioOn] = useState(isAudioStarted())
   const [copied, setCopied] = useState(false)
 
@@ -92,6 +97,23 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
             onChange={(e) => setBpm(doc, Number(e.target.value))}
             className="w-20 bg-zinc-900 border border-zinc-800 rounded px-2 py-1 font-mono"
           />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="text-zinc-400 text-sm font-mono">Meter</label>
+          <select
+            value={timeSigKey}
+            onChange={(e) => {
+              const [n, d] = e.target.value.split('/').map(Number)
+              setTimeSignature(doc, [n, d])
+            }}
+            className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 font-mono text-sm"
+            title="Time signature — affects bar width and note grid; existing notes keep their position in time"
+          >
+            {TIME_SIGNATURE_OPTIONS.map(([n, d]) => (
+              <option key={`${n}/${d}`} value={`${n}/${d}`}>{`${n}/${d}`}</option>
+            ))}
+          </select>
         </div>
 
         <label className="flex items-center gap-2 text-sm font-mono text-zinc-400 cursor-pointer select-none">

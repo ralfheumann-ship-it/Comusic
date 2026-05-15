@@ -4,6 +4,8 @@ import { useY } from '../collab/useY'
 import {
   addLoop,
   getBars,
+  getStepsPerBar,
+  getStepsPerBeat,
   getTrackLoops,
   getTrackMuted,
   getProjectMap,
@@ -15,7 +17,7 @@ import {
 } from '../collab/schema'
 import InlineEdit from './InlineEdit'
 import LoopContainer from './LoopContainer'
-import { BAR_WIDTH, type LoopSelection } from './types'
+import { STEP_WIDTH, type LoopSelection } from './types'
 import { useSongPosition } from '../state/songPosition'
 
 interface Props {
@@ -32,17 +34,37 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
   const muted = useY(track, () => getTrackMuted(track))
   const loopsArr = getTrackLoops(track)
   const loops = useY<YLoop[]>(loopsArr, () => loopsArr.toArray())
-  const bars = useY(getProjectMap(doc), () => getBars(doc))
+  const projectMap = getProjectMap(doc)
+  const bars = useY(projectMap, () => getBars(doc))
+  const stepsPerBar = useY(projectMap, () => getStepsPerBar(doc))
+  const stepsPerBeat = useY(projectMap, () => getStepsPerBeat(doc))
   const cursorBars = useSongPosition((s) => s.bars)
   const cursorPlaying = useSongPosition((s) => s.playing)
   const laneRef = useRef<HTMLDivElement>(null)
 
-  const onLaneClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const barWidth = stepsPerBar * STEP_WIDTH
+  const beatWidth = stepsPerBeat * STEP_WIDTH
+  const laneWidth = bars * barWidth
+
+  // Use pointerdown rather than click so the target check is reliable: a
+  // synthesized click bubbles to the nearest common ancestor of pointerdown
+  // and pointerup, which can be the lane itself when a resize gesture starts
+  // on a child handle and the pointer ends up outside the loop on release —
+  // that would otherwise spawn a stray new loop.
+  const onLanePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
     if (e.target !== laneRef.current) return
     const rect = laneRef.current.getBoundingClientRect()
-    const bar = Math.floor((e.clientX - rect.left) / BAR_WIDTH)
-    addLoop(doc, trackId, bar)
+    const bar = Math.floor((e.clientX - rect.left) / barWidth)
+    addLoop(doc, trackId, bar * stepsPerBar)
   }
+
+  // Three-layer grid: soft per-step, medium per-beat, brighter per-bar.
+  const gridBackground = [
+    `repeating-linear-gradient(90deg, transparent 0 ${STEP_WIDTH - 1}px, rgba(255,255,255,0.03) ${STEP_WIDTH - 1}px ${STEP_WIDTH}px)`,
+    `repeating-linear-gradient(90deg, transparent 0 ${beatWidth - 1}px, rgba(255,255,255,0.07) ${beatWidth - 1}px ${beatWidth}px)`,
+    `repeating-linear-gradient(90deg, transparent 0 ${barWidth - 1}px, rgba(255,255,255,0.14) ${barWidth - 1}px ${barWidth}px)`
+  ].join(', ')
 
   return (
     <div className="flex bg-zinc-900 border border-zinc-800 rounded overflow-hidden">
@@ -76,11 +98,11 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
 
       <div
         ref={laneRef}
-        onClick={onLaneClick}
+        onPointerDown={onLanePointerDown}
         className="relative h-20 cursor-cell"
         style={{
-          width: bars * BAR_WIDTH,
-          backgroundImage: `repeating-linear-gradient(90deg, transparent 0 ${BAR_WIDTH - 1}px, rgba(255,255,255,0.06) ${BAR_WIDTH - 1}px ${BAR_WIDTH}px)`
+          width: laneWidth,
+          backgroundImage: gridBackground
         }}
       >
         {loops.map((loop) => (
@@ -91,6 +113,7 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
             loop={loop}
             color={color}
             barsTotal={bars}
+            stepsPerBar={stepsPerBar}
             muted={muted}
             onClick={() => onSelectLoop({ trackId, loopId: loop.get('id') as string })}
             isSelected={
@@ -101,7 +124,7 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
         {cursorPlaying && (
           <div
             className="absolute top-0 bottom-0 bg-zinc-100 pointer-events-none"
-            style={{ left: cursorBars * BAR_WIDTH - 0.5, width: 1 }}
+            style={{ left: cursorBars * barWidth - 0.5, width: 1 }}
           />
         )}
       </div>

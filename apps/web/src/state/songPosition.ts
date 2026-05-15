@@ -19,8 +19,18 @@ function tick() {
   const prev = useSongPosition.getState()
   if (playing) {
     const ticks = Tone.Time(Tone.Transport.position).toTicks()
-    const beats = ticks / Tone.Transport.PPQ
-    const bars = beats / 4
+    const ts = Tone.Transport.timeSignature
+    let n = 4
+    let d = 4
+    if (typeof ts === 'number') {
+      n = ts
+    } else if (Array.isArray(ts) && ts.length >= 2) {
+      n = ts[0] as number
+      d = ts[1] as number
+    }
+    // PPQ is ticks per quarter note. quartersPerBar = numerator * (4 / denominator).
+    const quartersPerBar = Math.max(0.0001, n * (4 / d))
+    const bars = ticks / (Tone.Transport.PPQ * quartersPerBar)
     if (prev.bars !== bars || !prev.playing) {
       useSongPosition.setState({ bars, playing: true })
     }

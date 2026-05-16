@@ -1,16 +1,21 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import * as Y from 'yjs'
+import { nanoid } from 'nanoid'
+import { Copy, Download, GitFork, LogOut, Pause, Play, Square } from 'lucide-react'
 import { useY } from '../collab/useY'
 import {
   getBpm,
   getIsPlaying,
   getLoopSong,
+  getPlayPaused,
   getProjectMap,
   getTimeSignature,
   getTitle,
   setBpm,
   setIsPlaying,
   setLoopSong,
+  setPlayPaused,
   setTimeSignature,
   setTitle,
   TIME_SIGNATURE_OPTIONS
@@ -19,7 +24,7 @@ import { isAudioStarted, onAudioStartedChange, startAudio } from '../audio/engin
 import Presence from './Presence'
 import InlineEdit from './InlineEdit'
 import type { Awareness } from '../presence/useAwareness'
-import { exportProject, slugifyTitle } from '../sharing/snapshot'
+import { exportProject, slugifyTitle, stashPendingImport } from '../sharing/snapshot'
 
 interface Props {
   doc: Y.Doc
@@ -31,18 +36,40 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
   const project = getProjectMap(doc)
   const bpm = useY(project, () => getBpm(doc))
   const playing = useY(project, () => getIsPlaying(doc))
+  const paused = useY(project, () => getPlayPaused(doc))
   const title = useY(project, () => getTitle(doc))
   const loopSong = useY(project, () => getLoopSong(doc))
   const timeSig = useY(project, () => getTimeSignature(doc))
   const timeSigKey = `${timeSig[0]}/${timeSig[1]}`
   const [audioOn, setAudioOn] = useState(isAudioStarted())
   const [copied, setCopied] = useState(false)
+  const navigate = useNavigate()
 
   useEffect(() => onAudioStartedChange(setAudioOn), [])
 
-  const onPlay = async () => {
+  const onPlayOrStop = async () => {
+    if (!audioOn) {
+      await startAudio()
+    }
+    if (playing) {
+      // Full stop: clear paused so position resets to playStart on next play.
+      doc.transact(() => {
+        setPlayPaused(doc, false)
+        setIsPlaying(doc, false)
+      })
+    } else {
+      // Start (or resume if previously paused — bridge keeps position when paused flag is set).
+      setIsPlaying(doc, true)
+    }
+  }
+
+  const onPause = async () => {
+    if (!playing) return
     if (!audioOn) await startAudio()
-    setIsPlaying(doc, !playing)
+    doc.transact(() => {
+      setPlayPaused(doc, true)
+      setIsPlaying(doc, false)
+    })
   }
 
   const onCopy = async () => {
@@ -64,9 +91,29 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
     URL.revokeObjectURL(url)
   }
 
+  const onFork = () => {
+    const update = Y.encodeStateAsUpdate(doc)
+    const newId = nanoid(10)
+    stashPendingImport(newId, update)
+    navigate(`/room/${newId}`)
+  }
+
+  const onLeave = () => {
+    navigate('/')
+  }
+
+  const playLabel = !audioOn
+    ? 'Enable audio'
+    : playing
+      ? 'Stop'
+      : paused
+        ? 'Resume'
+        : 'Play'
+  const PrimaryIcon = playing ? Square : Play
+
   return (
     <div className="border-b border-zinc-800 bg-zinc-900/50">
-      <div className="flex items-center px-4 pt-3">
+      <div className="flex items-start gap-4 px-4 pt-3">
         <InlineEdit
           value={title}
           onCommit={(v) => setTitle(doc, v)}
@@ -75,16 +122,37 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
           maxLength={80}
           title="Click to rename project"
         />
+
+        <div className="flex-1" />
+
+        <div className="flex items-center gap-3">
+          <Presence awareness={awareness} />
+          <div className="text-sm font-mono text-zinc-400">
+            room <span className="text-zinc-200">{roomId}</span>
+          </div>
+        </div>
       </div>
 
       <div className="flex items-center gap-4 p-4">
         <button
-          onClick={onPlay}
-          className={`px-4 py-2 rounded font-mono text-zinc-950 ${
+          onClick={onPlayOrStop}
+          className={`px-4 py-2 rounded font-mono text-zinc-950 flex items-center gap-1.5 ${
             playing ? 'bg-rose-400 hover:bg-rose-300' : 'bg-emerald-400 hover:bg-emerald-300'
           }`}
+          title={playing ? 'Stop and rewind to start' : 'Play from start (or resume if paused)'}
         >
-          {!audioOn ? 'Enable audio' : playing ? 'Stop' : 'Play'}
+          <PrimaryIcon size={16} />
+          {playLabel}
+        </button>
+
+        <button
+          onClick={onPause}
+          disabled={!playing}
+          className="px-3 py-2 rounded font-mono text-zinc-100 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:hover:bg-zinc-800 flex items-center gap-1.5"
+          title="Pause (keeps position)"
+        >
+          <Pause size={16} />
+          Pause
         </button>
 
         <div className="flex items-center gap-2">
@@ -128,24 +196,40 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
 
         <div className="flex-1" />
 
-        <Presence awareness={awareness} />
-
-        <div className="text-sm font-mono text-zinc-400">
-          room <span className="text-zinc-200">{roomId}</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onCopy}
+            className="px-3 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded font-mono flex items-center gap-1.5"
+            title="Copy room link to clipboard"
+          >
+            <Copy size={14} />
+            {copied ? 'Copied!' : 'Copy link'}
+          </button>
+          <button
+            onClick={onExport}
+            className="px-3 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded font-mono flex items-center gap-1.5"
+            title="Download project as a .comusic.json file"
+          >
+            <Download size={14} />
+            Export
+          </button>
+          <button
+            onClick={onFork}
+            className="px-3 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded font-mono flex items-center gap-1.5"
+            title="Create a private copy of this project in a new room"
+          >
+            <GitFork size={14} />
+            Fork
+          </button>
+          <button
+            onClick={onLeave}
+            className="px-3 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded font-mono flex items-center gap-1.5"
+            title="Leave this room and return to the landing page"
+          >
+            <LogOut size={14} />
+            Leave
+          </button>
         </div>
-        <button
-          onClick={onCopy}
-          className="px-3 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded font-mono"
-        >
-          {copied ? 'Copied!' : 'Copy link'}
-        </button>
-        <button
-          onClick={onExport}
-          className="px-3 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded font-mono"
-          title="Download project as a .comusic.json file"
-        >
-          Export
-        </button>
       </div>
     </div>
   )

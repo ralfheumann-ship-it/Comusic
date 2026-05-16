@@ -53,7 +53,7 @@ export default function LoopView({ doc, selection, onClose }: Props) {
   }
 
   return (
-    <div className="w-[480px] shrink-0 border-l border-zinc-800 bg-zinc-950 flex flex-col">
+    <div className="w-[640px] shrink-0 border-l border-zinc-800 bg-zinc-950 flex flex-col">
       <div className="flex items-center justify-between p-4 border-b border-zinc-800">
         <div className="flex items-center gap-2">
           <span className="w-3 h-3 rounded-full" style={{ background: color }} />

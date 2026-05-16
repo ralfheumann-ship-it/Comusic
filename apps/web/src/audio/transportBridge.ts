@@ -2,12 +2,14 @@ import * as Tone from 'tone'
 import * as Y from 'yjs'
 import {
   getEffectivePlayRange,
+  getPlayPaused,
   getProjectMap,
   getSongEndSteps,
   getTimeSignature,
   getTracks,
   getLoopSong,
   setIsPlaying,
+  setPlayPaused,
   type YTrack
 } from '../collab/schema'
 import { isAudioStarted, onAudioStartedChange } from './engine'
@@ -57,20 +59,32 @@ function applyState() {
   if (!isAudioStarted()) return
 
   const canPlay = songEndSteps > 0 && rangeEnd > rangeStart
+  const paused = getPlayPaused(doc)
 
   if (playing && canPlay && Tone.Transport.state !== 'started') {
-    Tone.Transport.position = `${startTicks}i`
+    // Fresh start resets to playStart; resuming from pause keeps current position.
+    if (!paused) Tone.Transport.position = `${startTicks}i`
     Tone.Transport.start()
   } else if ((!playing || !canPlay) && Tone.Transport.state === 'started') {
-    Tone.Transport.stop()
-    Tone.Transport.position = `${startTicks}i`
+    if (paused) {
+      Tone.Transport.pause()
+    } else {
+      Tone.Transport.stop()
+      Tone.Transport.position = `${startTicks}i`
+    }
     clearAllPlayheads()
   }
 
   if (playing && canPlay && !loopSong) {
     stopEventId = Tone.Transport.scheduleOnce(() => {
       stopEventId = null
-      if (doc) setIsPlaying(doc, false)
+      const d = doc
+      if (!d) return
+      // Natural song-end is a stop, not a pause.
+      d.transact(() => {
+        setPlayPaused(d, false)
+        setIsPlaying(d, false)
+      })
     }, `${endTicks}i`)
   }
 }

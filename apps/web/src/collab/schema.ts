@@ -121,6 +121,19 @@ export function getStepsPerBeat(doc: Y.Doc): number {
   return stepsPerBeatFor(getTimeSignature(doc))
 }
 
+// How many cells the loop-edit grid shows per row. Chosen so each row maps to
+// a natural musical chunk (half-bar in 4/4, one compound pulse in 6/8 and 12/8)
+// and stepsPerBar is always a clean multiple of the per-row count.
+export function noteGridColsFor(ts: TimeSignature): number {
+  const [n, d] = ts
+  if (d === 4 && n === 4) return 8
+  return 6
+}
+
+export function getNoteGridCols(doc: Y.Doc): number {
+  return noteGridColsFor(getTimeSignature(doc))
+}
+
 export function getSongSteps(doc: Y.Doc): number {
   return getBars(doc) * getStepsPerBar(doc)
 }
@@ -170,6 +183,14 @@ export function getLoopSong(doc: Y.Doc): boolean {
 
 export function setLoopSong(doc: Y.Doc, value: boolean) {
   getProjectMap(doc).set('loopSong', value)
+}
+
+export function getPlayPaused(doc: Y.Doc): boolean {
+  return (getProjectMap(doc).get('playPaused') as boolean) ?? false
+}
+
+export function setPlayPaused(doc: Y.Doc, value: boolean) {
+  getProjectMap(doc).set('playPaused', value)
 }
 
 export function getPlayStart(doc: Y.Doc): number | null {
@@ -563,4 +584,53 @@ export function setNotePitch(doc: Y.Doc, trackId: string, loopId: string, index:
   const pitches = getLoopPitches(loop)
   if (!pitches) return
   pitches.set(String(index), pitch)
+}
+
+export function setNote(
+  doc: Y.Doc,
+  trackId: string,
+  loopId: string,
+  index: number,
+  active: boolean,
+  pitch?: string
+) {
+  const loop = findLoop(doc, trackId, loopId)
+  if (!loop) return
+  if (index < 0 || index >= getLoopLengthSteps(loop)) return
+  const notes = getLoopNotes(loop)
+  const pitches = getLoopPitches(loop)
+  if (!notes) return
+  doc.transact(() => {
+    notes.set(String(index), active)
+    if (active && pitch !== undefined && pitches) pitches.set(String(index), pitch)
+  })
+}
+
+export function moveNote(
+  doc: Y.Doc,
+  trackId: string,
+  loopId: string,
+  fromIndex: number,
+  toIndex: number,
+  pitchOverride?: string
+) {
+  const loop = findLoop(doc, trackId, loopId)
+  if (!loop) return
+  const length = getLoopLengthSteps(loop)
+  if (fromIndex < 0 || fromIndex >= length) return
+  if (toIndex < 0 || toIndex >= length) return
+  if (fromIndex === toIndex && pitchOverride === undefined) return
+  const notes = getLoopNotes(loop)
+  const pitches = getLoopPitches(loop)
+  if (!notes) return
+  const fromKey = String(fromIndex)
+  const toKey = String(toIndex)
+  const movingPitch = pitchOverride ?? ((pitches?.get(fromKey) as string | undefined) ?? 'C4')
+  doc.transact(() => {
+    if (fromIndex !== toIndex) {
+      notes.set(fromKey, false)
+    }
+    notes.set(toKey, true)
+    if (pitches) pitches.set(toKey, movingPitch)
+  })
 }

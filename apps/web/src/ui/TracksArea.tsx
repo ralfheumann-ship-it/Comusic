@@ -3,6 +3,7 @@ import * as Y from 'yjs'
 import { useY } from '../collab/useY'
 import { addTrack, getTracks, type YTrack } from '../collab/schema'
 import TrackLane from './TrackLane'
+import PlayRangeBar from './PlayRangeBar'
 import type { LoopSelection } from './types'
 
 interface Props {
@@ -75,6 +76,7 @@ export default function TracksArea({ doc, onSelectLoop, selected }: Props) {
       onPointerDownCapture={onPointerDownCapture}
     >
       <div className="space-y-2 p-4 min-w-min">
+        <PlayRangeBar doc={doc} />
         {tracks.map((track) => (
           <TrackLane
             key={track.get('id') as string}

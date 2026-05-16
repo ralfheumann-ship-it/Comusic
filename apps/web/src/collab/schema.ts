@@ -136,6 +136,7 @@ function ensureBarsForSteps(doc: Y.Doc, neededSteps: number) {
 
 export function initProject(doc: Y.Doc) {
   const project = getProjectMap(doc)
+  const tracks = getTracks(doc)
   doc.transact(() => {
     if (project.get('bpm') === undefined) project.set('bpm', 120)
     if (project.get('isPlaying') === undefined) project.set('isPlaying', false)
@@ -144,6 +145,14 @@ export function initProject(doc: Y.Doc) {
     if (project.get('loopSong') === undefined) project.set('loopSong', true)
     if (project.get('timeSignature') === undefined)
       project.set('timeSignature', [DEFAULT_TIME_SIGNATURE[0], DEFAULT_TIME_SIGNATURE[1]])
+    if (tracks.length === 0) {
+      const track = new Y.Map<unknown>()
+      track.set('id', nanoid(8))
+      track.set('name', 'Track 1')
+      track.set('color', TRACK_COLORS[0])
+      track.set('loops', new Y.Array<YLoop>())
+      tracks.push([track])
+    }
   })
 }
 
@@ -161,6 +170,54 @@ export function getLoopSong(doc: Y.Doc): boolean {
 
 export function setLoopSong(doc: Y.Doc, value: boolean) {
   getProjectMap(doc).set('loopSong', value)
+}
+
+export function getPlayStart(doc: Y.Doc): number | null {
+  const v = getProjectMap(doc).get('playStart')
+  return typeof v === 'number' ? v : null
+}
+
+export function getPlayEnd(doc: Y.Doc): number | null {
+  const v = getProjectMap(doc).get('playEnd')
+  return typeof v === 'number' ? v : null
+}
+
+export function setPlayStart(doc: Y.Doc, step: number | null) {
+  const project = getProjectMap(doc)
+  if (step === null) project.delete('playStart')
+  else project.set('playStart', Math.max(0, Math.round(step)))
+}
+
+export function setPlayEnd(doc: Y.Doc, step: number | null) {
+  const project = getProjectMap(doc)
+  if (step === null) project.delete('playEnd')
+  else project.set('playEnd', Math.max(1, Math.round(step)))
+}
+
+export function setPlayRange(doc: Y.Doc, start: number | null, end: number | null) {
+  doc.transact(() => {
+    setPlayStart(doc, start)
+    setPlayEnd(doc, end)
+  })
+}
+
+export function hasExplicitPlayRange(doc: Y.Doc): boolean {
+  const project = getProjectMap(doc)
+  return project.has('playStart') || project.has('playEnd')
+}
+
+export function getEffectivePlayRange(doc: Y.Doc): { start: number; end: number } {
+  const explicitStart = getPlayStart(doc)
+  const explicitEnd = getPlayEnd(doc)
+  const songEnd = getSongEndSteps(doc)
+  const start = explicitStart !== null ? explicitStart : 0
+  let end = explicitEnd !== null ? explicitEnd : songEnd
+  if (end <= start) {
+    // Degenerate (e.g. nothing in the song yet, or both clamped to 0):
+    // fall back to a non-zero window so downstream loopEnd math is safe.
+    end = Math.max(songEnd, start + 1)
+  }
+  return { start, end }
 }
 
 export function getSongEndSteps(doc: Y.Doc): number {

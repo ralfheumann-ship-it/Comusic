@@ -1,6 +1,7 @@
 import * as Tone from 'tone'
 import * as Y from 'yjs'
 import {
+  getEffectivePlayRange,
   getProjectMap,
   getSongEndSteps,
   getTimeSignature,
@@ -33,35 +34,36 @@ function applyState() {
   const playing = (projectMap.get('isPlaying') as boolean) ?? false
   const loopSong = getLoopSong(doc)
   const [tsNum, tsDen] = getTimeSignature(doc)
+  const { start: rangeStart, end: rangeEnd } = getEffectivePlayRange(doc)
+  const songEndSteps = getSongEndSteps(doc)
 
-  // Use ticks throughout to avoid decimal-measure parsing quirks when the song-end
-  // is not an integer number of bars (e.g. 101 sixteenths in 4/4 = 6.3125 bars).
+  // Ticks-based throughout to avoid decimal-measure parsing quirks.
   const PPQ = Tone.Transport.PPQ
   const ticksPerStep = PPQ / 4
   const quartersPerBar = tsNum * (4 / tsDen)
   const ticksPerBar = PPQ * quartersPerBar
-  const rawSongEndTicks = getSongEndSteps(doc) * ticksPerStep
+  const startTicks = Math.max(0, rangeStart * ticksPerStep)
   // Guarantee a non-zero loop window so Transport.loop never gets a 0-length region.
-  const loopEndTicks = Math.max(rawSongEndTicks, ticksPerBar)
+  const endTicks = Math.max(startTicks + ticksPerBar, rangeEnd * ticksPerStep)
 
   Tone.Transport.timeSignature = [tsNum, tsDen]
   Tone.Transport.bpm.value = bpm
   Tone.Transport.loop = loopSong
-  Tone.Transport.loopStart = 0
-  Tone.Transport.loopEnd = `${loopEndTicks}i`
+  Tone.Transport.loopStart = `${startTicks}i`
+  Tone.Transport.loopEnd = `${endTicks}i`
 
   clearStopEvent()
 
   if (!isAudioStarted()) return
 
-  const canPlay = rawSongEndTicks > 0
+  const canPlay = songEndSteps > 0 && rangeEnd > rangeStart
 
   if (playing && canPlay && Tone.Transport.state !== 'started') {
-    Tone.Transport.position = 0
+    Tone.Transport.position = `${startTicks}i`
     Tone.Transport.start()
   } else if ((!playing || !canPlay) && Tone.Transport.state === 'started') {
     Tone.Transport.stop()
-    Tone.Transport.position = 0
+    Tone.Transport.position = `${startTicks}i`
     clearAllPlayheads()
   }
 
@@ -69,7 +71,7 @@ function applyState() {
     stopEventId = Tone.Transport.scheduleOnce(() => {
       stopEventId = null
       if (doc) setIsPlaying(doc, false)
-    }, `${rawSongEndTicks}i`)
+    }, `${endTicks}i`)
   }
 }
 

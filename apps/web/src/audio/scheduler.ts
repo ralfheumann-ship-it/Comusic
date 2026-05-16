@@ -13,6 +13,7 @@ import {
 } from '../collab/schema'
 import { getInstrument, type Instrument } from './instruments/registry'
 import { clearAllPlayheads, clearPlayheadStep, setPlayheadStep } from '../state/playhead'
+import { getEffectiveMuteForTrack } from '../state/muteIntent'
 
 interface LoopRunner {
   loopId: string
@@ -121,7 +122,7 @@ function rebuildSequence(runner: LoopRunner) {
         return
       }
 
-      const muted = (trackMap.get('muted') as boolean) ?? false
+      const muted = getEffectiveMuteForTrack(trackMap)
       if (!muted) {
         const key = String(offset)
         const active = runner.notes

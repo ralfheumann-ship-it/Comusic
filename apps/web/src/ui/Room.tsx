@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import * as Y from 'yjs'
 import { connectRoom, disconnectRoom, type Room as RoomState } from '../collab/doc'
-import { getIsPlaying, initProject, setIsPlaying } from '../collab/schema'
+import { initProject } from '../collab/schema'
+import { getEffectivePlaying, setPlayingIntent } from '../state/playbackIntent'
 import { attachTransport, detachTransport } from '../audio/transportBridge'
 import { attachScheduler, detachScheduler } from '../audio/scheduler'
 import { isAudioStarted, startAudio } from '../audio/engine'
@@ -80,7 +81,7 @@ export default function Room() {
       }
       e.preventDefault()
       if (!isAudioStarted()) await startAudio()
-      setIsPlaying(room.doc, !getIsPlaying(room.doc))
+      setPlayingIntent(room.doc, !getEffectivePlaying(room.doc))
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

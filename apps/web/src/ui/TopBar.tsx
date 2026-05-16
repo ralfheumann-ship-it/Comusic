@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as Y from 'yjs'
 import { nanoid } from 'nanoid'
-import { Copy, Download, GitFork, LogOut, Pause, Play, Square } from 'lucide-react'
+import { Copy, Download, GitFork, LogOut, Play, Square } from 'lucide-react'
 import { useY } from '../collab/useY'
 import {
   getBpm,
@@ -13,16 +13,18 @@ import {
   getTimeSignature,
   getTitle,
   setBpm,
-  setIsPlaying,
   setLoopSong,
-  setPlayPaused,
   setTimeSignature,
   setTitle,
   TIME_SIGNATURE_OPTIONS
 } from '../collab/schema'
 import { isAudioStarted, onAudioStartedChange, startAudio } from '../audio/engine'
+import { useSyncPrefs } from '../state/syncPrefs'
+import { useLocalPlayback } from '../state/localPlayback'
+import { setPlayingIntent } from '../state/playbackIntent'
 import Presence from './Presence'
 import InlineEdit from './InlineEdit'
+import SyncMenu from './SyncMenu'
 import type { Awareness } from '../presence/useAwareness'
 import { exportProject, slugifyTitle, stashPendingImport } from '../sharing/snapshot'
 
@@ -35,8 +37,13 @@ interface Props {
 export default function TopBar({ doc, roomId, awareness }: Props) {
   const project = getProjectMap(doc)
   const bpm = useY(project, () => getBpm(doc))
-  const playing = useY(project, () => getIsPlaying(doc))
-  const paused = useY(project, () => getPlayPaused(doc))
+  const docPlaying = useY(project, () => getIsPlaying(doc))
+  const docPaused = useY(project, () => getPlayPaused(doc))
+  const localPlaying = useLocalPlayback((s) => s.isPlaying)
+  const localPaused = useLocalPlayback((s) => s.paused)
+  const syncPlayback = useSyncPrefs((s) => s.syncPlayback)
+  const playing = syncPlayback ? docPlaying : localPlaying
+  const paused = syncPlayback ? docPaused : localPaused
   const title = useY(project, () => getTitle(doc))
   const loopSong = useY(project, () => getLoopSong(doc))
   const timeSig = useY(project, () => getTimeSignature(doc))
@@ -48,28 +55,14 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
   useEffect(() => onAudioStartedChange(setAudioOn), [])
 
   const onPlayOrStop = async () => {
-    if (!audioOn) {
-      await startAudio()
-    }
-    if (playing) {
-      // Full stop: clear paused so position resets to playStart on next play.
-      doc.transact(() => {
-        setPlayPaused(doc, false)
-        setIsPlaying(doc, false)
-      })
-    } else {
-      // Start (or resume if previously paused — bridge keeps position when paused flag is set).
-      setIsPlaying(doc, true)
-    }
-  }
-
-  const onPause = async () => {
-    if (!playing) return
     if (!audioOn) await startAudio()
-    doc.transact(() => {
-      setPlayPaused(doc, true)
-      setIsPlaying(doc, false)
-    })
+    if (playing) {
+      // Full stop clears the paused flag so the next start rewinds to playStart.
+      setPlayingIntent(doc, false, false)
+    } else {
+      // Start (or resume — the bridge keeps position when paused was true).
+      setPlayingIntent(doc, true, paused)
+    }
   }
 
   const onCopy = async () => {
@@ -102,13 +95,7 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
     navigate('/')
   }
 
-  const playLabel = !audioOn
-    ? 'Enable audio'
-    : playing
-      ? 'Stop'
-      : paused
-        ? 'Resume'
-        : 'Play'
+  const playLabel = !audioOn ? 'Enable audio' : playing ? 'Stop' : 'Play'
   const PrimaryIcon = playing ? Square : Play
 
   return (
@@ -136,23 +123,13 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
       <div className="flex items-center gap-4 p-4">
         <button
           onClick={onPlayOrStop}
-          className={`px-4 py-2 rounded font-mono text-zinc-950 flex items-center gap-1.5 ${
+          className={`p-4 rounded-md text-zinc-950 flex items-center justify-center ${
             playing ? 'bg-rose-400 hover:bg-rose-300' : 'bg-emerald-400 hover:bg-emerald-300'
           }`}
+          aria-label={playLabel}
           title={playing ? 'Stop and rewind to start' : 'Play from start (or resume if paused)'}
         >
-          <PrimaryIcon size={16} />
-          {playLabel}
-        </button>
-
-        <button
-          onClick={onPause}
-          disabled={!playing}
-          className="px-3 py-2 rounded font-mono text-zinc-100 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:hover:bg-zinc-800 flex items-center gap-1.5"
-          title="Pause (keeps position)"
-        >
-          <Pause size={16} />
-          Pause
+          <PrimaryIcon size={20} />
         </button>
 
         <div className="flex items-center gap-2">
@@ -195,6 +172,8 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
         </label>
 
         <div className="flex-1" />
+
+        <SyncMenu doc={doc} />
 
         <div className="flex items-center gap-2">
           <button

@@ -2,18 +2,22 @@ import * as Tone from 'tone'
 import * as Y from 'yjs'
 import {
   getEffectivePlayRange,
-  getPlayPaused,
   getProjectMap,
   getSongEndSteps,
   getTimeSignature,
   getTracks,
   getLoopSong,
-  setIsPlaying,
-  setPlayPaused,
   type YTrack
 } from '../collab/schema'
 import { isAudioStarted, onAudioStartedChange } from './engine'
 import { clearAllPlayheads } from '../state/playhead'
+import { useSyncPrefs } from '../state/syncPrefs'
+import { useLocalPlayback } from '../state/localPlayback'
+import {
+  getEffectivePaused,
+  getEffectivePlaying,
+  setPlayingIntent
+} from '../state/playbackIntent'
 
 let doc: Y.Doc | null = null
 let projectMap: Y.Map<unknown> | null = null
@@ -21,6 +25,8 @@ let tracksArr: Y.Array<YTrack> | null = null
 let projectObserver: (() => void) | null = null
 let tracksObserver: (() => void) | null = null
 let unsubAudio: (() => void) | null = null
+let unsubSyncPrefs: (() => void) | null = null
+let unsubLocalPlayback: (() => void) | null = null
 let stopEventId: number | null = null
 
 function clearStopEvent() {
@@ -33,7 +39,7 @@ function clearStopEvent() {
 function applyState() {
   if (!doc || !projectMap) return
   const bpm = (projectMap.get('bpm') as number) ?? 120
-  const playing = (projectMap.get('isPlaying') as boolean) ?? false
+  const playing = getEffectivePlaying(doc)
   const loopSong = getLoopSong(doc)
   const [tsNum, tsDen] = getTimeSignature(doc)
   const { start: rangeStart, end: rangeEnd } = getEffectivePlayRange(doc)
@@ -59,7 +65,7 @@ function applyState() {
   if (!isAudioStarted()) return
 
   const canPlay = songEndSteps > 0 && rangeEnd > rangeStart
-  const paused = getPlayPaused(doc)
+  const paused = getEffectivePaused(doc)
 
   if (playing && canPlay && Tone.Transport.state !== 'started') {
     // Fresh start resets to playStart; resuming from pause keeps current position.
@@ -80,11 +86,9 @@ function applyState() {
       stopEventId = null
       const d = doc
       if (!d) return
-      // Natural song-end is a stop, not a pause.
-      d.transact(() => {
-        setPlayPaused(d, false)
-        setIsPlaying(d, false)
-      })
+      // Natural song-end is a stop, not a pause. setPlayingIntent routes to
+      // doc or local depending on whether playback sync is enabled.
+      setPlayingIntent(d, false, false)
     }, `${endTicks}i`)
   }
 }
@@ -99,6 +103,10 @@ export function attachTransport(d: Y.Doc) {
   projectMap.observe(projectObserver)
   tracksArr!.observeDeep(tracksObserver)
   unsubAudio = onAudioStartedChange(() => applyState())
+  // Sync prefs and local playback are alternative sources of the effective
+  // play state — react to them with the same applyState pass.
+  unsubSyncPrefs = useSyncPrefs.subscribe(() => applyState())
+  unsubLocalPlayback = useLocalPlayback.subscribe(() => applyState())
   applyState()
 }
 
@@ -106,6 +114,8 @@ export function detachTransport() {
   if (projectMap && projectObserver) projectMap.unobserve(projectObserver)
   if (tracksArr && tracksObserver) tracksArr.unobserveDeep(tracksObserver)
   unsubAudio?.()
+  unsubSyncPrefs?.()
+  unsubLocalPlayback?.()
   clearStopEvent()
   doc = null
   projectMap = null
@@ -113,6 +123,8 @@ export function detachTransport() {
   projectObserver = null
   tracksObserver = null
   unsubAudio = null
+  unsubSyncPrefs = null
+  unsubLocalPlayback = null
   if (Tone.Transport.state === 'started') {
     Tone.Transport.stop()
     Tone.Transport.position = 0

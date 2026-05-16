@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import * as Y from 'yjs'
+import { X } from 'lucide-react'
 import { useY } from '../collab/useY'
 import {
   getBars,
@@ -172,11 +173,23 @@ export default function PlayRangeBar({ doc }: Props) {
 
   return (
     <div className="flex sticky top-0 z-30 border border-zinc-950 bg-zinc-950 rounded">
-      {/* Spacer so the bar's lane area starts where the track headers end. */}
+      {/* Header area aligned with track headers; hosts the clear-range action. */}
       <div
-        className="w-48 shrink-0 sticky left-0 z-40 bg-zinc-950 rounded-l"
+        className="w-48 shrink-0 sticky left-0 z-40 bg-zinc-950 rounded-l flex items-center justify-end pr-2"
         style={{ height: BAR_HEIGHT_PX }}
-      />
+      >
+        {explicit && (
+          <button
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => setPlayRange(doc, null, null)}
+            className="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
+            aria-label="Clear play range"
+            title="Clear play range"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
 
       <div
         ref={rangeRef}

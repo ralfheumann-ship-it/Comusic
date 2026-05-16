@@ -10,7 +10,6 @@ import {
   getTrackMuted,
   getProjectMap,
   removeTrack,
-  setTrackMuted,
   setTrackName,
   type YLoop,
   type YTrack
@@ -19,6 +18,9 @@ import InlineEdit from './InlineEdit'
 import LoopContainer from './LoopContainer'
 import { STEP_WIDTH, type LoopSelection } from './types'
 import { useSongPosition } from '../state/songPosition'
+import { useSyncPrefs } from '../state/syncPrefs'
+import { useLocalMutes } from '../state/localMutes'
+import { setMuteIntent } from '../state/muteIntent'
 
 interface Props {
   doc: Y.Doc
@@ -31,7 +33,10 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
   const trackId = track.get('id') as string
   const name = useY(track, () => track.get('name') as string)
   const color = useY(track, () => track.get('color') as string)
-  const muted = useY(track, () => getTrackMuted(track))
+  const docMuted = useY(track, () => getTrackMuted(track))
+  const localMuted = useLocalMutes((s) => !!s.mutes[trackId])
+  const syncMutes = useSyncPrefs((s) => s.syncMutes)
+  const muted = syncMutes ? docMuted : localMuted
   const loopsArr = getTrackLoops(track)
   const loops = useY<YLoop[]>(loopsArr, () => loopsArr.toArray())
   const projectMap = getProjectMap(doc)
@@ -81,7 +86,7 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
           title="Click to rename track"
         />
         <button
-          onClick={() => setTrackMuted(doc, trackId, !muted)}
+          onClick={() => setMuteIntent(doc, trackId, !muted)}
           className={`text-xs font-mono shrink-0 w-5 ${
             muted ? 'text-rose-400' : 'text-zinc-500 hover:text-zinc-200'
           }`}

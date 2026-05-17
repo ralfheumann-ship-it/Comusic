@@ -2,6 +2,18 @@
 
 Collaborative web sequencer for retro / 8-bit style loops. Multiple users join the same room and edit project title, tracks, loop containers, and step-grid notes together in real time. Each user runs audio locally; project state syncs via Yjs through a WebSocket relay.
 
+## Highlights
+
+- **Real-time multiplayer** — every change (notes, loops, tempo, meter, mutes, names) syncs instantly across all connected clients. Live presence avatars in the top bar.
+- **Local-first audio** — synthesis runs in each browser via Tone.js. The relay only transports state, never audio; no server-side mixing or recording.
+- **Step sequencer with depth** — variable-length loops on each track, 16th-note resolution, time signatures `4/4` / `3/4` / `6/8` / `12/8`, and an editable loop range across the song for selective playback.
+- **Note grid you can play** — paint by dragging, drop notes with the last-used pitch, change pitch by dragging vertically (with a live overlay and audio preview), reposition by dragging horizontally, free-place with `Ctrl`, erase with right-click + drag. No popovers.
+- **Built-in instrument library** — twenty Tone.js instruments grouped into synth leads (`square`, `triangle`, `saw`, `pulse`, `pluck`, `lead`, `pad`, `fat` super-saw, `poly-synth`, `fm` bells), basses (`sub-bass`, `fm-bass`, `acid-bass`), drums (`kick`, `snare`, `clap`, hi-hats), and percussion (`cowbell`, `crash`, `noise`). Adding more is a two-file change.
+- **Opt-in collaboration** — per-client Sync toggles let you go off-grid on **playback** or **track mutes** so you can solo or A/B without affecting anyone else.
+- **Frictionless sharing** — paste-in room links, snapshot export to `.comusic.json`, in-room **Fork** that opens the current state in a brand-new room.
+- **Mobile-friendly** — full-screen loop editor overlay on phones, icon-only toolbar at narrow widths, collapsible track headers (tap a color dot to expand all), proper viewport-height scrolling on touch devices.
+- **No persistence required** — the relay is intentionally dumb. Rooms exist while someone is connected; use export/fork to save work.
+
 ## Run locally
 
 ```

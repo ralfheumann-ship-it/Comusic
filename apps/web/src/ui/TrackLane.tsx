@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { useY } from '../collab/useY'
 import {
@@ -21,6 +21,7 @@ import { useSongPosition } from '../state/songPosition'
 import { useSyncPrefs } from '../state/syncPrefs'
 import { useLocalMutes } from '../state/localMutes'
 import { setMuteIntent } from '../state/muteIntent'
+import { useTrackHeaderExpanded } from '../state/trackHeaderExpanded'
 
 interface Props {
   doc: Y.Doc
@@ -46,6 +47,24 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
   const cursorBars = useSongPosition((s) => s.bars)
   const cursorPlaying = useSongPosition((s) => s.playing)
   const laneRef = useRef<HTMLDivElement>(null)
+  const expanded = useTrackHeaderExpanded((s) => s.expanded)
+  const toggleExpanded = useTrackHeaderExpanded((s) => s.toggle)
+  // Two-tap remove confirmation. First click arms; second click within the
+  // timeout actually removes. Timeout resets the armed state automatically.
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
+  useEffect(() => {
+    if (!confirmingRemove) return
+    const t = window.setTimeout(() => setConfirmingRemove(false), 3000)
+    return () => window.clearTimeout(t)
+  }, [confirmingRemove])
+
+  const onRemoveClick = () => {
+    if (confirmingRemove) {
+      removeTrack(doc, trackId)
+    } else {
+      setConfirmingRemove(true)
+    }
+  }
 
   const barWidth = stepsPerBar * STEP_WIDTH
   const beatWidth = stepsPerBeat * STEP_WIDTH
@@ -75,32 +94,53 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
 
   return (
     <div className="flex bg-zinc-900 border border-zinc-800 rounded">
-      <div className="w-48 shrink-0 p-3 border-r border-zinc-800 flex items-center gap-2 min-w-0 sticky left-0 z-20 bg-zinc-900 rounded-l">
-        <span className="w-3 h-3 rounded-full shrink-0" style={{ background: color }} />
-        <InlineEdit
-          value={name}
-          onCommit={(v) => setTrackName(doc, trackId, v)}
-          className="font-mono text-sm flex-1 truncate min-w-0"
-          inputClassName="font-mono text-sm flex-1 min-w-0 bg-zinc-900 border border-zinc-700 rounded px-1 outline-none focus:border-zinc-500"
-          maxLength={48}
-          title="Click to rename track"
+      <div
+        className={`shrink-0 p-2 sm:p-3 border-r border-zinc-800 flex justify-center items-center gap-2 min-w-0 sticky left-0 z-20 bg-zinc-900 rounded-l ${
+          expanded ? 'w-48' : 'w-9'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={toggleExpanded}
+          className="w-3 h-3 rounded-full shrink-0"
+          style={{ background: color }}
+          aria-label={expanded ? 'Collapse track headers' : 'Expand track headers'}
+          aria-expanded={expanded}
+          title={expanded ? 'Hide track controls' : 'Show track controls'}
         />
-        <button
-          onClick={() => setMuteIntent(doc, trackId, !muted)}
-          className={`text-xs font-mono shrink-0 w-5 ${
-            muted ? 'text-rose-400' : 'text-zinc-500 hover:text-zinc-200'
-          }`}
-          title={muted ? 'Unmute track' : 'Mute track'}
-        >
-          M
-        </button>
-        <button
-          onClick={() => removeTrack(doc, trackId)}
-          className="text-zinc-500 hover:text-rose-400 text-xs font-mono shrink-0"
-          title="Remove track"
-        >
-          ✕
-        </button>
+        {expanded && (
+          <>
+            <InlineEdit
+              value={name}
+              onCommit={(v) => setTrackName(doc, trackId, v)}
+              className="font-mono text-sm flex-1 truncate min-w-0"
+              inputClassName="font-mono text-sm flex-1 min-w-0 bg-zinc-900 border border-zinc-700 rounded px-1 outline-none focus:border-zinc-500"
+              maxLength={48}
+              title="Click to rename track"
+            />
+            <button
+              onClick={() => setMuteIntent(doc, trackId, !muted)}
+              className={`text-xs font-mono shrink-0 w-5 ${
+                muted ? 'text-rose-400' : 'text-zinc-500 hover:text-zinc-200'
+              }`}
+              title={muted ? 'Unmute track' : 'Mute track'}
+            >
+              M
+            </button>
+            <button
+              onClick={onRemoveClick}
+              onBlur={() => setConfirmingRemove(false)}
+              className={`text-xs font-mono shrink-0 ${
+                confirmingRemove
+                  ? 'text-rose-400 font-bold'
+                  : 'text-zinc-500 hover:text-rose-400'
+              }`}
+              title={confirmingRemove ? 'Click again to confirm removal' : 'Remove track'}
+            >
+              {confirmingRemove ? 'Sure?' : '✕'}
+            </button>
+          </>
+        )}
       </div>
 
       <div

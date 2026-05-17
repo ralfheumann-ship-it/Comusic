@@ -90,9 +90,9 @@ export default function Room() {
   if (!room) return null
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-dvh flex flex-col overflow-hidden">
       <TopBar doc={room.doc} roomId={roomId!} awareness={room.provider.awareness} />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden relative">
         <TracksArea doc={room.doc} onSelectLoop={setSelected} selected={selected} />
         {selected && (
           <LoopView

@@ -138,12 +138,19 @@ export function getSongSteps(doc: Y.Doc): number {
   return getBars(doc) * getStepsPerBar(doc)
 }
 
+// Bars of empty trailing space kept beyond the last filled step so the lane
+// always exposes clickable grid for adding a new loop after the song ends.
+const TRAILING_PADDING_BARS = 2
+
 function ensureBarsForSteps(doc: Y.Doc, neededSteps: number) {
   const stepsPerBar = getStepsPerBar(doc)
   if (stepsPerBar <= 0 || neededSteps <= 0) return
   const project = getProjectMap(doc)
   const currentBars = (project.get('bars') as number) ?? DEFAULT_BARS
-  const wantBars = Math.min(MAX_BARS, Math.ceil(neededSteps / stepsPerBar))
+  const wantBars = Math.min(
+    MAX_BARS,
+    Math.ceil(neededSteps / stepsPerBar) + TRAILING_PADDING_BARS
+  )
   if (wantBars > currentBars) project.set('bars', wantBars)
 }
 

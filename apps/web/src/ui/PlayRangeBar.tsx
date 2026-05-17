@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { X } from 'lucide-react'
 import { useY } from '../collab/useY'
+import { useTrackHeaderExpanded } from '../state/trackHeaderExpanded'
 import {
   getBars,
   getPlayEnd,
@@ -60,6 +61,7 @@ export default function PlayRangeBar({ doc }: Props) {
   const playEnd = useY(projectMap, () => getPlayEnd(doc))
   const explicit = useY(projectMap, () => hasExplicitPlayRange(doc))
   const songEndSteps = useY(tracksArr, () => getSongEndSteps(doc))
+  const headerExpanded = useTrackHeaderExpanded((s) => s.expanded)
 
   const rangeRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
@@ -175,7 +177,9 @@ export default function PlayRangeBar({ doc }: Props) {
     <div className="flex sticky top-0 z-30 border border-zinc-950 bg-zinc-950 rounded">
       {/* Header area aligned with track headers; hosts the clear-range action. */}
       <div
-        className="w-48 shrink-0 sticky left-0 z-40 bg-zinc-950 rounded-l flex items-center justify-end pr-2"
+        className={`shrink-0 sticky left-0 z-40 bg-zinc-950 rounded-l flex items-center justify-end pr-2 ${
+          headerExpanded ? 'w-48' : 'w-9'
+        }`}
         style={{ height: BAR_HEIGHT_PX }}
       >
         {explicit && (

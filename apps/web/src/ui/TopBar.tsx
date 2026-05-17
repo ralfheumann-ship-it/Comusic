@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as Y from 'yjs'
 import { nanoid } from 'nanoid'
-import { Copy, Download, GitFork, LogOut, Play, Square } from 'lucide-react'
+import { Copy, Download, GitFork, LogOut, Play, Repeat, Square } from 'lucide-react'
 import { useY } from '../collab/useY'
 import {
   getBpm,
@@ -99,8 +99,8 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
   const PrimaryIcon = playing ? Square : Play
 
   return (
-    <div className="border-b border-zinc-800 bg-zinc-900/50">
-      <div className="flex items-start gap-4 px-4 pt-3">
+    <div className="border-b border-zinc-800 bg-zinc-900/50 shrink-0">
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 pt-3">
         <InlineEdit
           value={title}
           onCommit={(v) => setTitle(doc, v)}
@@ -120,16 +120,16 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
         </div>
       </div>
 
-      <div className="flex items-center gap-4 p-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-4">
         <button
           onClick={onPlayOrStop}
-          className={`p-4 rounded-md text-zinc-950 flex items-center justify-center ${
+          className={`h-10 w-10 rounded-md text-zinc-950 flex items-center justify-center ${
             playing ? 'bg-rose-400 hover:bg-rose-300' : 'bg-emerald-400 hover:bg-emerald-300'
           }`}
           aria-label={playLabel}
-          title={playing ? 'Stop and rewind to start' : 'Play from start (or resume if paused)'}
+          title={playing ? 'Stop' : 'Play'}
         >
-          <PrimaryIcon size={20} />
+          <PrimaryIcon size={18} />
         </button>
 
         <div className="flex items-center gap-2">
@@ -140,7 +140,7 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
             max={300}
             value={bpm}
             onChange={(e) => setBpm(doc, Number(e.target.value))}
-            className="w-20 bg-zinc-900 border border-zinc-800 rounded px-2 py-1 font-mono"
+            className="h-10 w-20 bg-zinc-900 border border-zinc-800 rounded px-2 font-mono"
           />
         </div>
 
@@ -152,7 +152,7 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
               const [n, d] = e.target.value.split('/').map(Number)
               setTimeSignature(doc, [n, d])
             }}
-            className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 font-mono text-sm"
+            className="h-10 bg-zinc-900 border border-zinc-800 rounded px-2 font-mono text-sm"
             title="Time signature — affects bar width and note grid; existing notes keep their position in time"
           >
             {TIME_SIGNATURE_OPTIONS.map(([n, d]) => (
@@ -161,53 +161,63 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
           </select>
         </div>
 
-        <label className="flex items-center gap-2 text-sm font-mono text-zinc-400 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={loopSong}
-            onChange={(e) => setLoopSong(doc, e.target.checked)}
-            className="accent-emerald-400"
-          />
-          Loop song
-        </label>
+        <div className="flex-1 flex justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <SyncMenu doc={doc} />
 
-        <div className="flex-1" />
+            <button
+              onClick={() => setLoopSong(doc, !loopSong)}
+              className={`h-10 w-10 sm:w-auto sm:px-[.688rem] rounded font-mono flex items-center justify-center ${
+                loopSong
+                  ? 'bg-zinc-800 hover:bg-zinc-700 text-emerald-400'
+                  : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-500'
+              }`}
+              aria-label={loopSong ? 'Disable song loop' : 'Enable song loop'}
+              aria-pressed={loopSong}
+              title={loopSong ? 'Song loop is on — click to disable' : 'Song loop is off — click to enable'}
+            >
+              <Repeat size={18} />
+            </button>
+          </div>
 
-        <SyncMenu doc={doc} />
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onCopy}
-            className="px-3 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded font-mono flex items-center gap-1.5"
-            title="Copy room link to clipboard"
-          >
-            <Copy size={14} />
-            {copied ? 'Copied!' : 'Copy link'}
-          </button>
-          <button
-            onClick={onExport}
-            className="px-3 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded font-mono flex items-center gap-1.5"
-            title="Download project as a .comusic.json file"
-          >
-            <Download size={14} />
-            Export
-          </button>
-          <button
-            onClick={onFork}
-            className="px-3 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded font-mono flex items-center gap-1.5"
-            title="Create a private copy of this project in a new room"
-          >
-            <GitFork size={14} />
-            Fork
-          </button>
-          <button
-            onClick={onLeave}
-            className="px-3 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded font-mono flex items-center gap-1.5"
-            title="Leave this room and return to the landing page"
-          >
-            <LogOut size={14} />
-            Leave
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={onCopy}
+              className="h-10 w-10 sm:w-auto sm:px-[.688rem] rounded font-mono text-sm bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center sm:gap-1.5"
+              aria-label="Copy room link"
+              title="Copy room link to clipboard"
+            >
+              <Copy size={18} />
+              <span className="hidden lg:inline">{copied ? 'Copied!' : 'Copy link'}</span>
+            </button>
+            <button
+              onClick={onExport}
+              className="h-10 w-10 sm:w-auto sm:px-[.688rem] rounded font-mono text-sm bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center sm:gap-1.5"
+              aria-label="Export project"
+              title="Download project as a .comusic.json file"
+            >
+              <Download size={18} />
+              <span className="hidden lg:inline">Export</span>
+            </button>
+            <button
+              onClick={onFork}
+              className="h-10 w-10 sm:w-auto sm:px-[.688rem] rounded font-mono text-sm bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center sm:gap-1.5"
+              aria-label="Fork project to a new room"
+              title="Create a private copy of this project in a new room"
+            >
+              <GitFork size={18} />
+              <span className="hidden lg:inline">Fork</span>
+            </button>
+            <button
+              onClick={onLeave}
+              className="h-10 w-10 sm:w-auto sm:px-[.688rem] rounded font-mono text-sm bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center sm:gap-1.5"
+              aria-label="Leave room"
+              title="Leave this room and return to the landing page"
+            >
+              <LogOut size={18} />
+              <span className="hidden lg:inline">Leave</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

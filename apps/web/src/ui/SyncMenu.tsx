@@ -50,18 +50,18 @@ export default function SyncMenu({ doc }: Props) {
     <div ref={containerRef} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`p-2 rounded font-mono flex items-center justify-center ${
-          allSynced
-            ? 'bg-zinc-800 hover:bg-zinc-700 text-emerald-400'
-            : noneSynced
-              ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400'
+        className={`h-10 w-10 sm:w-auto sm:px-[.688rem] rounded font-mono flex items-center justify-center ${
+          noneSynced
+            ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-500'
+            : allSynced
+              ? 'bg-zinc-800 hover:bg-zinc-700 text-emerald-400'
               : 'bg-zinc-800 hover:bg-zinc-700 text-amber-400'
         }`}
         aria-label="Sync settings"
         aria-expanded={open}
         title={buttonTitle}
       >
-        <Icon size={16} />
+        <Icon size={18} />
       </button>
 
       {open && (

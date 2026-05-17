@@ -22,8 +22,10 @@ import { isAudioStarted, onAudioStartedChange, startAudio } from '../audio/engin
 import { useSyncPrefs } from '../state/syncPrefs'
 import { useLocalPlayback } from '../state/localPlayback'
 import { setPlayingIntent } from '../state/playbackIntent'
+import { useMasterVolume } from '../state/masterVolume'
 import Presence from './Presence'
 import InlineEdit from './InlineEdit'
+import Knob from './Knob'
 import SyncMenu from './SyncMenu'
 import type { Awareness } from '../presence/useAwareness'
 import { exportProject, slugifyTitle, stashPendingImport } from '../sharing/snapshot'
@@ -50,6 +52,8 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
   const timeSigKey = `${timeSig[0]}/${timeSig[1]}`
   const [audioOn, setAudioOn] = useState(isAudioStarted())
   const [copied, setCopied] = useState(false)
+  const masterVolume = useMasterVolume((s) => s.volume)
+  const setMasterVolume = useMasterVolume((s) => s.setVolume)
   const navigate = useNavigate()
 
   useEffect(() => onAudioStartedChange(setAudioOn), [])
@@ -131,6 +135,17 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
         >
           <PrimaryIcon size={18} />
         </button>
+
+        <div className="flex items-center gap-2 h-10">
+          <label className="text-zinc-400 text-sm font-mono">Vol</label>
+          <Knob
+            value={masterVolume}
+            onChange={setMasterVolume}
+            size={28}
+            ariaLabel="Master volume"
+            title="Master volume (this client only)"
+          />
+        </div>
 
         <div className="flex items-center gap-2">
           <label className="text-zinc-400 text-sm font-mono">BPM</label>

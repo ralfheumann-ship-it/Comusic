@@ -584,6 +584,19 @@ export function clearLoopNotes(doc: Y.Doc, trackId: string, loopId: string) {
   })
 }
 
+export const DEFAULT_LOOP_VOLUME = 50
+
+export function getLoopVolume(loop: YLoop): number {
+  const v = loop.get('volume')
+  return typeof v === 'number' ? v : DEFAULT_LOOP_VOLUME
+}
+
+export function setLoopVolume(doc: Y.Doc, trackId: string, loopId: string, volume: number) {
+  const loop = findLoop(doc, trackId, loopId)
+  if (!loop) return
+  loop.set('volume', Math.max(0, Math.min(100, volume)))
+}
+
 export function setNotePitch(doc: Y.Doc, trackId: string, loopId: string, index: number, pitch: string) {
   const loop = findLoop(doc, trackId, loopId)
   if (!loop) return

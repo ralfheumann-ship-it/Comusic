@@ -3,8 +3,9 @@ import type { InstrumentFactory } from './registry'
 
 // 303-style squelchy bass: sawtooth + resonant lowpass with filter envelope,
 // fed through a touch of distortion for the classic acid bite.
-export const acidBass: InstrumentFactory = () => {
-  const distortion = new Tone.Distortion({ distortion: 0.3, wet: 0.4 }).toDestination()
+export const acidBass: InstrumentFactory = (_, output) => {
+  const dest = output ?? Tone.getDestination()
+  const distortion = new Tone.Distortion({ distortion: 0.3, wet: 0.2 }).connect(dest)
   const synth = new Tone.MonoSynth({
     oscillator: { type: 'sawtooth' },
     envelope: { attack: 0.005, decay: 0.25, sustain: 0.2, release: 0.15 },
@@ -18,10 +19,12 @@ export const acidBass: InstrumentFactory = () => {
       octaves: 4
     }
   }).connect(distortion)
-  synth.volume.value = -8
+  // Distortion adds substantial perceived loudness on top of the raw signal
+  // — keep the source quiet so the squelch sits in the mix, not on top of it.
+  synth.volume.value = -14
 
   return {
-    trigger: (time, pitch) => synth.triggerAttackRelease(pitch, '8n', time, 0.9),
+    trigger: (time, pitch) => synth.triggerAttackRelease(pitch, '8n', time, 0.7),
     dispose: () => {
       synth.dispose()
       distortion.dispose()

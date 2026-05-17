@@ -2,11 +2,14 @@ import * as Y from 'yjs'
 import { useY } from '../collab/useY'
 import {
   clearLoopNotes,
+  DEFAULT_LOOP_VOLUME,
   findLoop,
   findTrack,
   getLoopPulseWidth,
+  getLoopVolume,
   setLoopInstrument,
   setLoopPulseWidth,
+  setLoopVolume,
   type YLoop
 } from '../collab/schema'
 import {
@@ -16,6 +19,7 @@ import {
 } from '../audio/instruments/registry'
 import { auditionInstrument } from '../audio/audition'
 import { startAudio } from '../audio/engine'
+import Knob from './Knob'
 import NoteGrid from './NoteGrid'
 import type { LoopSelection } from './types'
 
@@ -36,6 +40,9 @@ export default function LoopView({ doc, selection, onClose }: Props) {
   )
   const pulseWidth = useY(loop as YLoop | undefined, () =>
     loop ? getLoopPulseWidth(loop) : 0.25
+  )
+  const loopVolume = useY(loop as YLoop | undefined, () =>
+    loop ? getLoopVolume(loop) : DEFAULT_LOOP_VOLUME
   )
 
   if (!track || !loop) {
@@ -92,6 +99,20 @@ export default function LoopView({ doc, selection, onClose }: Props) {
               ))}
             </select>
           </label>
+
+          <div className="flex items-center gap-2">
+            <span className="text-zinc-400 text-sm font-mono">Vol</span>
+            <Knob
+              value={loopVolume}
+              defaultValue={DEFAULT_LOOP_VOLUME}
+              onChange={(v) =>
+                setLoopVolume(doc, selection.trackId, selection.loopId, v)
+              }
+              size={28}
+              ariaLabel="Loop instrument volume"
+              title="Loop instrument volume (shared with collaborators)"
+            />
+          </div>
 
           <div className="flex-1" />
 

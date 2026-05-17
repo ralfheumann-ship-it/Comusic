@@ -5,12 +5,13 @@ import type { InstrumentFactory } from './registry'
 // being cut off by the next trigger, so release tails of consecutive notes
 // overlap. Triangle voice with a moderate release works well for arpeggios
 // and sustained washes.
-export const polySynth: InstrumentFactory = () => {
+export const polySynth: InstrumentFactory = (_, output) => {
+  const dest = output ?? Tone.getDestination()
   const synth = new Tone.PolySynth(Tone.Synth, {
     oscillator: { type: 'triangle' },
     envelope: { attack: 0.01, decay: 0.2, sustain: 0.4, release: 0.6 }
-  }).toDestination()
-  synth.volume.value = -10
+  }).connect(dest)
+  synth.volume.value = -6
 
   return {
     trigger: (time, pitch) => synth.triggerAttackRelease(pitch, '8n', time, 0.7),

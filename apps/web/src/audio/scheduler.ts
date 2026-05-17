@@ -8,12 +8,14 @@ import {
   getLoopPulseWidth,
   getLoopStartStep,
   getLoopLengthSteps,
+  getLoopVolume,
   type YLoop,
   type YTrack
 } from '../collab/schema'
 import { getInstrument, type Instrument } from './instruments/registry'
 import { clearAllPlayheads, clearPlayheadStep, setPlayheadStep } from '../state/playhead'
 import { getEffectiveMuteForTrack } from '../state/muteIntent'
+import { pctToDb } from './volume'
 
 interface LoopRunner {
   loopId: string
@@ -29,6 +31,8 @@ interface LoopRunner {
   sequenceLength: number
   instrumentId: string
   pulseWidth: number
+  volumeNode: Tone.Volume
+  volumePct: number
 }
 
 interface TrackRunner {
@@ -45,6 +49,8 @@ let tracksObserver: (() => void) | null = null
 let doc: Y.Doc | null = null
 
 function buildLoopRunner(loopMap: YLoop, trackMap: YTrack): LoopRunner {
+  const initialVolume = getLoopVolume(loopMap)
+  const volumeNode = new Tone.Volume(pctToDb(initialVolume)).toDestination()
   const runner: LoopRunner = {
     loopId: loopMap.get('id') as string,
     loopMap,
@@ -58,6 +64,8 @@ function buildLoopRunner(loopMap: YLoop, trackMap: YTrack): LoopRunner {
     sequenceLength: 0,
     instrumentId: '',
     pulseWidth: NaN,
+    volumeNode,
+    volumePct: initialVolume,
     observer: () => onLoopChange(runner)
   }
   loopMap.observe(runner.observer)
@@ -70,7 +78,12 @@ function onLoopChange(runner: LoopRunner) {
   const instrumentId = runner.loopMap.get('instrumentId') as string
   const pulseWidth = getLoopPulseWidth(runner.loopMap)
   const length = getLoopLengthSteps(runner.loopMap)
+  const volume = getLoopVolume(runner.loopMap)
 
+  if (volume !== runner.volumePct) {
+    runner.volumePct = volume
+    runner.volumeNode.volume.value = pctToDb(volume)
+  }
   if (instrumentId !== runner.instrumentId || pulseWidth !== runner.pulseWidth) {
     rebuildInstrument(runner)
   }
@@ -91,8 +104,8 @@ function rebuildInstrument(runner: LoopRunner) {
   const factory = getInstrument(instrumentId)
   const params = { pulseWidth }
 
-  runner.instrument = factory(params)
-  runner.previewInstrument = factory(params)
+  runner.instrument = factory(params, runner.volumeNode)
+  runner.previewInstrument = factory(params, runner.volumeNode)
   runner.previewLastTime = 0
   runner.instrumentId = instrumentId
   runner.pulseWidth = pulseWidth
@@ -148,6 +161,7 @@ function disposeLoopRunner(runner: LoopRunner) {
   runner.sequence?.dispose()
   runner.instrument?.dispose()
   runner.previewInstrument?.dispose()
+  runner.volumeNode.dispose()
   clearPlayheadStep(runner.loopId)
 }
 

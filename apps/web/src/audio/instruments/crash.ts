@@ -5,17 +5,19 @@ import type { InstrumentFactory } from './registry'
 // NOTE: MetalSynth inherits triggerAttackRelease(note, duration, time, velocity)
 // from Instrument — the first arg is the base frequency, not a duration. Passing
 // a duration token there ("2n", "8n") silently produces nothing audible.
-export const crash: InstrumentFactory = () => {
+export const crash: InstrumentFactory = (_, output) => {
+  const dest = output ?? Tone.getDestination()
   const synth = new Tone.MetalSynth({
     envelope: { attack: 0.001, decay: 1.5, release: 0.5 },
     harmonicity: 5.1,
     modulationIndex: 32,
     resonance: 4000,
     octaves: 1.5
-  }).toDestination()
+  }).connect(dest)
+  synth.volume.value = -6
 
   return {
-    trigger: (time) => synth.triggerAttackRelease('C4', '8n', time, 0.8),
+    trigger: (time) => synth.triggerAttackRelease('C4', '8n', time, 0.7),
     dispose: () => synth.dispose()
   }
 }

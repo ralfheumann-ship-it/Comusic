@@ -23,9 +23,14 @@ import { pad } from './pad'
 import { fat } from './fat'
 import { polySynth } from './poly-synth'
 import { fm } from './fm'
+import { piano } from './piano'
+import { acousticGuitar } from './acoustic-guitar'
+import { electricGuitar } from './electric-guitar'
+import { overdriveGuitar } from './overdrive-guitar'
 import { subBass } from './sub-bass'
 import { fmBass } from './fm-bass'
 import { acidBass } from './acid-bass'
+import { bassGuitar } from './bass-guitar'
 import { noise } from './noise'
 import { kick } from './kick'
 import { kick808 } from './kick-808'
@@ -37,7 +42,9 @@ import { tomMid } from './tom-mid'
 import { tomHigh } from './tom-high'
 import { conga } from './conga'
 import { hihat } from './hihat'
+import { ride } from './ride'
 import { shaker } from './shaker'
+import { tambourine } from './tambourine'
 import { cowbell } from './cowbell'
 import { crash } from './crash'
 
@@ -65,9 +72,18 @@ const instruments: Record<string, InstrumentMeta> = {
   fat: { factory: fat, pitched: true, label: 'Fat (super-saw)' },
   'poly-synth': { factory: polySynth, pitched: true, label: 'PolySynth' },
   fm: { factory: fm, pitched: true, label: 'FM bell' },
+  piano: { factory: piano, pitched: true, label: 'Piano' },
+  'acoustic-guitar': { factory: acousticGuitar, pitched: true, label: 'Acoustic guitar' },
+  'electric-guitar': { factory: electricGuitar, pitched: true, label: 'Electric guitar' },
+  'overdrive-guitar': {
+    factory: overdriveGuitar,
+    pitched: true,
+    label: 'Overdrive guitar'
+  },
   'sub-bass': { factory: subBass, pitched: true, label: 'Sub bass' },
   'fm-bass': { factory: fmBass, pitched: true, label: 'FM bass' },
   'acid-bass': { factory: acidBass, pitched: true, label: 'Acid bass' },
+  'bass-guitar': { factory: bassGuitar, pitched: true, label: 'Bass guitar' },
   kick: { factory: kick, pitched: false, label: 'Kick' },
   'kick-808': { factory: kick808, pitched: false, label: 'Kick 808 (sub)' },
   snare: { factory: snare, pitched: false, label: 'Snare' },
@@ -87,7 +103,9 @@ const instruments: Record<string, InstrumentMeta> = {
     pitched: false,
     label: 'Hi-hat (open)'
   },
+  ride: { factory: ride, pitched: false, label: 'Ride' },
   shaker: { factory: shaker, pitched: false, label: 'Shaker' },
+  tambourine: { factory: tambourine, pitched: false, label: 'Tambourine' },
   cowbell: { factory: cowbell, pitched: true, label: 'Cowbell' },
   crash: { factory: crash, pitched: false, label: 'Crash' },
   noise: { factory: noise, pitched: false, label: 'Noise' }

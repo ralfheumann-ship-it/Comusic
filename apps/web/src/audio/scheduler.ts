@@ -14,7 +14,7 @@ import {
 } from '../collab/schema'
 import { getInstrument, type Instrument } from './instruments/registry'
 import { clearAllPlayheads, clearPlayheadStep, setPlayheadStep } from '../state/playhead'
-import { getEffectiveMuteForTrack } from '../state/muteIntent'
+import { isTrackEffectivelyAudible } from '../state/muteIntent'
 import { pctToDb } from './volume'
 
 interface LoopRunner {
@@ -135,8 +135,8 @@ function rebuildSequence(runner: LoopRunner) {
         return
       }
 
-      const muted = getEffectiveMuteForTrack(trackMap)
-      if (!muted) {
+      const audible = doc ? isTrackEffectivelyAudible(trackMap, doc) : true
+      if (audible) {
         const key = String(offset)
         const active = runner.notes
           ? ((runner.notes.get(key) as boolean | undefined) ?? false)

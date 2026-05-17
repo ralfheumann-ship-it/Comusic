@@ -333,6 +333,15 @@ export function setTrackMuted(doc: Y.Doc, trackId: string, muted: boolean) {
   track?.set('muted', muted)
 }
 
+export function getTrackSolo(track: YTrack): boolean {
+  return (track.get('solo') as boolean) ?? false
+}
+
+export function setTrackSolo(doc: Y.Doc, trackId: string, solo: boolean) {
+  const track = findTrack(doc, trackId)
+  track?.set('solo', solo)
+}
+
 export function removeTrack(doc: Y.Doc, trackId: string) {
   const tracks = getTracks(doc)
   for (let i = 0; i < tracks.length; i++) {

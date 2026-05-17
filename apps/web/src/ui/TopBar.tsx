@@ -26,6 +26,7 @@ import { useMasterVolume } from '../state/masterVolume'
 import Presence from './Presence'
 import InlineEdit from './InlineEdit'
 import Knob from './Knob'
+import BpmInput from './BpmInput'
 import SyncMenu from './SyncMenu'
 import type { Awareness } from '../presence/useAwareness'
 import { exportProject, slugifyTitle, stashPendingImport } from '../sharing/snapshot'
@@ -149,14 +150,7 @@ export default function TopBar({ doc, roomId, awareness }: Props) {
 
         <div className="flex items-center gap-2">
           <label className="text-zinc-400 text-sm font-mono">BPM</label>
-          <input
-            type="number"
-            min={20}
-            max={300}
-            value={bpm}
-            onChange={(e) => setBpm(doc, Number(e.target.value))}
-            className="h-10 w-20 bg-zinc-900 border border-zinc-800 rounded px-2 font-mono"
-          />
+          <BpmInput value={bpm} onChange={(v) => setBpm(doc, v)} />
         </div>
 
         <div className="flex items-center gap-2">

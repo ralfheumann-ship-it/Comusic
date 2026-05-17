@@ -36,9 +36,20 @@ interface Props {
   track: YTrack
   onSelectLoop: (sel: LoopSelection) => void
   selected: LoopSelection | null
+  onStartReorderDrag: (trackId: string) => void
+  reorderActive: boolean
 }
 
-export default function TrackLane({ doc, track, onSelectLoop, selected }: Props) {
+const REORDER_DRAG_THRESHOLD_PX = 5
+
+export default function TrackLane({
+  doc,
+  track,
+  onSelectLoop,
+  selected,
+  onStartReorderDrag,
+  reorderActive
+}: Props) {
   const trackId = track.get('id') as string
   const name = useY(track, () => track.get('name') as string)
   const color = useY(track, () => track.get('color') as string)
@@ -74,6 +85,56 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
   const laneRef = useRef<HTMLDivElement>(null)
   const expanded = useTrackHeaderExpanded((s) => s.expanded)
   const toggleExpanded = useTrackHeaderExpanded((s) => s.toggle)
+
+  // Hover-only grip strip on the row's left edge is the reorder drag handle.
+  // Pointer-down here arms drag tracking; once movement exceeds the threshold
+  // we hand off to TracksArea, which owns the global pointer listeners and the
+  // ghost / indicator rendering. A plain click (no drag) is a no-op.
+  const onGripPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    // Suppress the browser's pointer-down default so we don't kick off a
+    // native text-drag if the pointer happens to be over selected text.
+    e.preventDefault()
+
+    // Two things bite during a reorder drag if we don't intervene:
+    //   1) The pointer sweeps across track names / loop labels and the
+    //      browser drag-selects them as text.
+    //   2) Any leftover selection from a prior drag turns the next gesture
+    //      into a native text DnD, which feels like a ghost text drag.
+    // Disable selection for the whole gesture and wipe any existing range.
+    const prevUserSelect = document.body.style.userSelect
+    document.body.style.userSelect = 'none'
+    window.getSelection()?.removeAllRanges()
+    const restoreSelect = () => {
+      window.removeEventListener('pointerup', restoreSelect)
+      window.removeEventListener('pointercancel', restoreSelect)
+      document.body.style.userSelect = prevUserSelect
+    }
+    window.addEventListener('pointerup', restoreSelect)
+    window.addEventListener('pointercancel', restoreSelect)
+
+    const startX = e.clientX
+    const startY = e.clientY
+    let started = false
+    const onMove = (ev: PointerEvent) => {
+      if (started) return
+      if (
+        Math.abs(ev.clientX - startX) > REORDER_DRAG_THRESHOLD_PX ||
+        Math.abs(ev.clientY - startY) > REORDER_DRAG_THRESHOLD_PX
+      ) {
+        started = true
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        onStartReorderDrag(trackId)
+      }
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
 
   // Track-options dropdown (3-dot menu).
   const [menuOpen, setMenuOpen] = useState(false)
@@ -145,7 +206,16 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
   return (
     <div className="flex bg-zinc-900 border border-zinc-800 rounded">
       <div
-        className={`shrink-0 p-2 sm:p-3 border-r border-zinc-800 min-w-0 sticky left-0 z-20 bg-zinc-900 rounded-l ${
+        onPointerDown={onGripPointerDown}
+        className={`w-1.5 sticky left-0 z-30 self-stretch rounded-l cursor-grab touch-none transition-colors ${
+          reorderActive ? '' : 'hover:bg-emerald-400/40'
+        }`}
+        title="Drag to reorder track"
+        aria-label="Drag to reorder track"
+        role="button"
+      />
+      <div
+        className={`shrink-0 p-2 sm:p-3 border-r border-zinc-800 min-w-0 sticky left-1.5 z-20 bg-zinc-900 ${
           expanded ? 'w-48 flex flex-col justify-between gap-1' : 'w-9 flex justify-center items-center'
         }`}
       >

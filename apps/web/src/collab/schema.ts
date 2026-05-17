@@ -154,6 +154,11 @@ function ensureBarsForSteps(doc: Y.Doc, neededSteps: number) {
   if (wantBars > currentBars) project.set('bars', wantBars)
 }
 
+// Spacing between consecutive track orderKeys. Large enough that drag-and-drop
+// reorders can keep midpoint-averaging the key for a long time before bumping
+// into floating-point granularity issues.
+export const TRACK_ORDER_GAP = 100
+
 export function initProject(doc: Y.Doc) {
   const project = getProjectMap(doc)
   const tracks = getTracks(doc)
@@ -170,8 +175,19 @@ export function initProject(doc: Y.Doc) {
       track.set('id', nanoid(8))
       track.set('name', 'Track 1')
       track.set('color', TRACK_COLORS[0])
+      track.set('orderKey', TRACK_ORDER_GAP)
       track.set('loops', new Y.Array<YLoop>())
       tracks.push([track])
+    } else {
+      // Backfill orderKey on legacy tracks so sorted rendering is always
+      // well-defined. Preserve current array order by giving them keys
+      // matching their current position.
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks.get(i)
+        if (typeof t.get('orderKey') !== 'number') {
+          t.set('orderKey', (i + 1) * TRACK_ORDER_GAP)
+        }
+      }
     }
   })
 }
@@ -313,10 +329,77 @@ export function addTrack(doc: Y.Doc): string {
     track.set('id', id)
     track.set('name', `Track ${tracks.length + 1}`)
     track.set('color', TRACK_COLORS[tracks.length % TRACK_COLORS.length])
+    track.set('orderKey', nextTrackOrderKey(doc))
     track.set('loops', new Y.Array<YLoop>())
     tracks.push([track])
   })
   return id
+}
+
+function nextTrackOrderKey(doc: Y.Doc): number {
+  const tracks = getTracks(doc)
+  let max = 0
+  for (let i = 0; i < tracks.length; i++) {
+    const v = tracks.get(i).get('orderKey')
+    if (typeof v === 'number' && v > max) max = v
+  }
+  return max + TRACK_ORDER_GAP
+}
+
+export function getTrackOrderKey(track: YTrack, fallback: number): number {
+  const v = track.get('orderKey')
+  return typeof v === 'number' ? v : fallback
+}
+
+// Returns tracks sorted by their orderKey. Tracks without an explicit key fall
+// back to their array position (multiplied by the gap) so legacy projects keep
+// a stable visual order until something writes an explicit key.
+export function getSortedTracks(doc: Y.Doc): YTrack[] {
+  const arr = getTracks(doc)
+  const items: { t: YTrack; key: number; id: string }[] = []
+  for (let i = 0; i < arr.length; i++) {
+    const t = arr.get(i)
+    items.push({
+      t,
+      key: getTrackOrderKey(t, (i + 1) * TRACK_ORDER_GAP),
+      id: t.get('id') as string
+    })
+  }
+  items.sort((a, b) => a.key - b.key || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  return items.map((x) => x.t)
+}
+
+// Move `trackId` so that, in the new sorted order, it sits at the given index
+// (0..N-1 within the post-move list — i.e. the count of OTHER tracks above it).
+// Implemented by writing a new orderKey midway between its new neighbours; the
+// underlying YArray is never reordered, which keeps YMap references — and the
+// scheduler's per-track observers — stable across moves.
+export function moveTrack(doc: Y.Doc, trackId: string, targetIndex: number) {
+  const sorted = getSortedTracks(doc)
+  const fromIndex = sorted.findIndex((t) => (t.get('id') as string) === trackId)
+  if (fromIndex < 0) return
+
+  const others = sorted.filter((_, i) => i !== fromIndex)
+  const t = Math.max(0, Math.min(others.length, targetIndex))
+  // No-op if dropping where it already is.
+  if (t === fromIndex) return
+
+  const fallbackKey = (track: YTrack) =>
+    getTrackOrderKey(track, (sorted.indexOf(track) + 1) * TRACK_ORDER_GAP)
+  const prev = t > 0 ? others[t - 1] : null
+  const next = t < others.length ? others[t] : null
+  const prevK = prev ? fallbackKey(prev) : null
+  const nextK = next ? fallbackKey(next) : null
+
+  let newKey: number
+  if (prevK === null && nextK !== null) newKey = nextK - TRACK_ORDER_GAP
+  else if (prevK !== null && nextK === null) newKey = prevK + TRACK_ORDER_GAP
+  else if (prevK !== null && nextK !== null) newKey = (prevK + nextK) / 2
+  else newKey = TRACK_ORDER_GAP
+
+  doc.transact(() => {
+    sorted[fromIndex].set('orderKey', newKey)
+  })
 }
 
 export function setTrackName(doc: Y.Doc, trackId: string, name: string) {

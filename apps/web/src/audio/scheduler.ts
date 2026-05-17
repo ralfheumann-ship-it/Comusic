@@ -3,6 +3,7 @@ import * as Y from 'yjs'
 import {
   getTracks,
   getTrackLoops,
+  getTrackVolume,
   getLoopNotes,
   getLoopPitches,
   getLoopPulseWidth,
@@ -41,6 +42,9 @@ interface TrackRunner {
   loopsArr: Y.Array<YLoop>
   runners: Map<string, LoopRunner>
   observer: () => void
+  trackObserver: () => void
+  volumeNode: Tone.Volume
+  volumePct: number
 }
 
 let trackRunners: Map<string, TrackRunner> = new Map()
@@ -48,9 +52,9 @@ let tracksArr: Y.Array<YTrack> | null = null
 let tracksObserver: (() => void) | null = null
 let doc: Y.Doc | null = null
 
-function buildLoopRunner(loopMap: YLoop, trackMap: YTrack): LoopRunner {
+function buildLoopRunner(loopMap: YLoop, trackMap: YTrack, trackOutput: Tone.ToneAudioNode): LoopRunner {
   const initialVolume = getLoopVolume(loopMap)
-  const volumeNode = new Tone.Volume(pctToDb(initialVolume)).toDestination()
+  const volumeNode = new Tone.Volume(pctToDb(initialVolume)).connect(trackOutput)
   const runner: LoopRunner = {
     loopId: loopMap.get('id') as string,
     loopMap,
@@ -167,12 +171,17 @@ function disposeLoopRunner(runner: LoopRunner) {
 
 function buildTrackRunner(trackMap: YTrack): TrackRunner {
   const trackId = trackMap.get('id') as string
+  const initialVolume = getTrackVolume(trackMap)
+  // Per-track bus: every loop's volume node feeds into this one. Composing in
+  // dB means the track knob attenuates/boosts all its loops by the same amount
+  // without overwriting any loop's own gain setting.
+  const volumeNode = new Tone.Volume(pctToDb(initialVolume)).toDestination()
   const loopsArr = getTrackLoops(trackMap)
   const runners = new Map<string, LoopRunner>()
 
   for (let i = 0; i < loopsArr.length; i++) {
     const lm = loopsArr.get(i)
-    const r = buildLoopRunner(lm, trackMap)
+    const r = buildLoopRunner(lm, trackMap, volumeNode)
     runners.set(r.loopId, r)
   }
 
@@ -181,10 +190,22 @@ function buildTrackRunner(trackMap: YTrack): TrackRunner {
     trackMap,
     loopsArr,
     runners,
-    observer: () => syncTrackLoops(tr)
+    volumeNode,
+    volumePct: initialVolume,
+    observer: () => syncTrackLoops(tr),
+    trackObserver: () => onTrackChange(tr)
   }
   loopsArr.observe(tr.observer)
+  trackMap.observe(tr.trackObserver)
   return tr
+}
+
+function onTrackChange(tr: TrackRunner) {
+  const v = getTrackVolume(tr.trackMap)
+  if (v !== tr.volumePct) {
+    tr.volumePct = v
+    tr.volumeNode.volume.value = pctToDb(v)
+  }
 }
 
 function syncTrackLoops(tr: TrackRunner) {
@@ -194,7 +215,7 @@ function syncTrackLoops(tr: TrackRunner) {
     const id = lm.get('id') as string
     present.add(id)
     if (!tr.runners.has(id)) {
-      tr.runners.set(id, buildLoopRunner(lm, tr.trackMap))
+      tr.runners.set(id, buildLoopRunner(lm, tr.trackMap, tr.volumeNode))
     }
   }
   for (const [id, runner] of tr.runners) {
@@ -207,8 +228,10 @@ function syncTrackLoops(tr: TrackRunner) {
 
 function disposeTrackRunner(tr: TrackRunner) {
   tr.loopsArr.unobserve(tr.observer)
+  tr.trackMap.unobserve(tr.trackObserver)
   for (const r of tr.runners.values()) disposeLoopRunner(r)
   tr.runners.clear()
+  tr.volumeNode.dispose()
 }
 
 function syncTracks() {

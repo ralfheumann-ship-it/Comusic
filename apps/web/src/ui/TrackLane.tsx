@@ -4,20 +4,24 @@ import { MoreVertical } from 'lucide-react'
 import { useY } from '../collab/useY'
 import {
   addLoop,
+  DEFAULT_TRACK_VOLUME,
   getBars,
   getStepsPerBar,
   getStepsPerBeat,
   getTrackLoops,
   getTrackMuted,
   getTrackSolo,
+  getTrackVolume,
   getTracks,
   getProjectMap,
   removeTrack,
   setTrackName,
+  setTrackVolume,
   type YLoop,
   type YTrack
 } from '../collab/schema'
 import InlineEdit from './InlineEdit'
+import Knob from './Knob'
 import LoopContainer from './LoopContainer'
 import { STEP_WIDTH, type LoopSelection } from './types'
 import { useSongPosition } from '../state/songPosition'
@@ -40,6 +44,7 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
   const color = useY(track, () => track.get('color') as string)
   const docMuted = useY(track, () => getTrackMuted(track))
   const docSoloed = useY(track, () => getTrackSolo(track))
+  const trackVolume = useY(track, () => getTrackVolume(track))
   const localMuted = useLocalMutes((s) => !!s.mutes[trackId])
   const localSoloed = useLocalSolos((s) => !!s.solos[trackId])
   const syncMutes = useSyncPrefs((s) => s.syncMutes)
@@ -167,7 +172,7 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
         </div>
 
         {expanded && (
-          <div className="flex items-end justify-between gap-2">
+          <div className="flex items-center justify-between gap-2">
             <div className="inline-flex rounded border border-zinc-700 overflow-hidden font-mono text-[11px] leading-none">
               <button
                 onClick={() => setMuteIntent(doc, trackId, !muted)}
@@ -194,6 +199,15 @@ export default function TrackLane({ doc, track, onSelectLoop, selected }: Props)
                 S
               </button>
             </div>
+
+            <Knob
+              value={trackVolume}
+              defaultValue={DEFAULT_TRACK_VOLUME}
+              onChange={(v) => setTrackVolume(doc, trackId, v)}
+              size={22}
+              ariaLabel="Track volume"
+              title="Track volume — scales every loop on this track"
+            />
 
             <div ref={menuRef} className="relative">
               <button

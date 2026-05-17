@@ -75,7 +75,7 @@ export default function Knob({
       onPointerUp={finish}
       onPointerCancel={finish}
       onDoubleClick={onDoubleClick}
-      className="select-none touch-none cursor-ns-resize shrink-0"
+      className="select-none mr-auto touch-none cursor-ns-resize shrink-0"
       role="slider"
       aria-valuemin={0}
       aria-valuemax={100}

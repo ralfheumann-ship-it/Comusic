@@ -342,6 +342,19 @@ export function setTrackSolo(doc: Y.Doc, trackId: string, solo: boolean) {
   track?.set('solo', solo)
 }
 
+export const DEFAULT_TRACK_VOLUME = 50
+
+export function getTrackVolume(track: YTrack): number {
+  const v = track.get('volume')
+  return typeof v === 'number' ? v : DEFAULT_TRACK_VOLUME
+}
+
+export function setTrackVolume(doc: Y.Doc, trackId: string, volume: number) {
+  const track = findTrack(doc, trackId)
+  if (!track) return
+  track.set('volume', Math.max(0, Math.min(100, volume)))
+}
+
 export function removeTrack(doc: Y.Doc, trackId: string) {
   const tracks = getTracks(doc)
   for (let i = 0; i < tracks.length; i++) {

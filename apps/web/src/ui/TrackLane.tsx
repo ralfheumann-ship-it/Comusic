@@ -30,6 +30,9 @@ import { useLocalMutes } from '../state/localMutes'
 import { useLocalSolos } from '../state/localSolos'
 import { setMuteIntent, setSoloIntent } from '../state/muteIntent'
 import { useTrackHeaderExpanded } from '../state/trackHeaderExpanded'
+import { useLoopDragStore } from '../state/loopDrag'
+import { suppressSelectionUntilPointerUp } from '../state/dragSelect'
+import { getInstrumentLabel } from '../audio/instruments/registry'
 
 interface Props {
   doc: Y.Doc
@@ -82,6 +85,7 @@ export default function TrackLane({
   const stepsPerBeat = useY(projectMap, () => getStepsPerBeat(doc))
   const cursorBars = useSongPosition((s) => s.bars)
   const cursorPlaying = useSongPosition((s) => s.playing)
+  const loopDrag = useLoopDragStore((s) => s.drag)
   const laneRef = useRef<HTMLDivElement>(null)
   const expanded = useTrackHeaderExpanded((s) => s.expanded)
   const toggleExpanded = useTrackHeaderExpanded((s) => s.toggle)
@@ -92,26 +96,8 @@ export default function TrackLane({
   // ghost / indicator rendering. A plain click (no drag) is a no-op.
   const onGripPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
-    // Suppress the browser's pointer-down default so we don't kick off a
-    // native text-drag if the pointer happens to be over selected text.
     e.preventDefault()
-
-    // Two things bite during a reorder drag if we don't intervene:
-    //   1) The pointer sweeps across track names / loop labels and the
-    //      browser drag-selects them as text.
-    //   2) Any leftover selection from a prior drag turns the next gesture
-    //      into a native text DnD, which feels like a ghost text drag.
-    // Disable selection for the whole gesture and wipe any existing range.
-    const prevUserSelect = document.body.style.userSelect
-    document.body.style.userSelect = 'none'
-    window.getSelection()?.removeAllRanges()
-    const restoreSelect = () => {
-      window.removeEventListener('pointerup', restoreSelect)
-      window.removeEventListener('pointercancel', restoreSelect)
-      document.body.style.userSelect = prevUserSelect
-    }
-    window.addEventListener('pointerup', restoreSelect)
-    window.addEventListener('pointercancel', restoreSelect)
+    suppressSelectionUntilPointerUp()
 
     const startX = e.clientX
     const startY = e.clientY
@@ -317,22 +303,35 @@ export default function TrackLane({
           backgroundImage: gridBackground
         }}
       >
-        {loops.map((loop) => (
-          <LoopContainer
-            key={loop.get('id') as string}
-            doc={doc}
-            trackId={trackId}
-            loop={loop}
-            color={color}
-            barsTotal={bars}
-            stepsPerBar={stepsPerBar}
-            muted={effectiveMuted}
-            onClick={() => onSelectLoop({ trackId, loopId: loop.get('id') as string })}
-            isSelected={
-              selected?.trackId === trackId && selected?.loopId === (loop.get('id') as string)
-            }
+        {loops.map((loop) => {
+          const lid = loop.get('id') as string
+          const isSelectedLoop = selected?.trackId === trackId && selected?.loopId === lid
+          return (
+            <LoopContainer
+              key={lid}
+              doc={doc}
+              trackId={trackId}
+              loop={loop}
+              color={color}
+              barsTotal={bars}
+              stepsPerBar={stepsPerBar}
+              muted={effectiveMuted}
+              onClick={() => onSelectLoop({ trackId, loopId: lid })}
+              onCrossTrackMove={(newTrackId) => {
+                if (isSelectedLoop) onSelectLoop({ trackId: newTrackId, loopId: lid })
+              }}
+              isSelected={isSelectedLoop}
+            />
+          )
+        })}
+        {loopDrag && loopDrag.targetTrackId === trackId && (
+          <LoopDragGhost
+            startStep={loopDrag.startStep}
+            lengthSteps={loopDrag.lengthSteps}
+            color={loopDrag.color}
+            instrumentId={loopDrag.instrumentId}
           />
-        ))}
+        )}
         {cursorPlaying && (
           <div
             className="absolute top-0 bottom-0 bg-zinc-100 pointer-events-none"
@@ -340,6 +339,33 @@ export default function TrackLane({
           />
         )}
       </div>
+    </div>
+  )
+}
+
+function LoopDragGhost({
+  startStep,
+  lengthSteps,
+  color,
+  instrumentId
+}: {
+  startStep: number
+  lengthSteps: number
+  color: string
+  instrumentId: string
+}) {
+  return (
+    <div
+      aria-hidden
+      className="absolute top-2 bottom-2 rounded flex items-center text-xs font-mono text-zinc-950 pointer-events-none ring-2 ring-zinc-100 shadow-lg"
+      style={{
+        left: startStep * STEP_WIDTH,
+        width: Math.max(STEP_WIDTH, lengthSteps * STEP_WIDTH - 1),
+        background: color,
+        opacity: 0.85
+      }}
+    >
+      <span className="truncate px-2 pl-2.5">{getInstrumentLabel(instrumentId)}</span>
     </div>
   )
 }

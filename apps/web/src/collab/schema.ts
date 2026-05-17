@@ -548,6 +548,53 @@ export function moveLoop(doc: Y.Doc, trackId: string, loopId: string, startStep:
   })
 }
 
+// Move a loop from one track's loops array to another. Yjs YMaps can't be
+// moved between containers, so we deep-clone the source, insert the clone in
+// the target, and delete the original. The clone keeps the same `id`, which
+// lets selection/scheduler keying continue to work — the scheduler simply
+// disposes the source-track runner and builds a fresh one in the target.
+export function moveLoopToTrack(
+  doc: Y.Doc,
+  fromTrackId: string,
+  toTrackId: string,
+  loopId: string,
+  newStartStep: number
+) {
+  if (fromTrackId === toTrackId) {
+    moveLoop(doc, fromTrackId, loopId, newStartStep)
+    return
+  }
+  const fromTrack = findTrack(doc, fromTrackId)
+  const toTrack = findTrack(doc, toTrackId)
+  if (!fromTrack || !toTrack) return
+  const fromLoops = getTrackLoops(fromTrack)
+  let fromIdx = -1
+  let source: YLoop | undefined
+  for (let i = 0; i < fromLoops.length; i++) {
+    const l = fromLoops.get(i)
+    if ((l.get('id') as string) === loopId) {
+      fromIdx = i
+      source = l
+      break
+    }
+  }
+  if (!source || fromIdx < 0) return
+
+  const stepsPerBar = getStepsPerBar(doc)
+  const length = getLoopLengthSteps(source)
+  const maxStart = Math.max(0, MAX_BARS * stepsPerBar - length)
+  const start = Math.max(0, Math.min(maxStart, Math.round(newStartStep)))
+  const toLoops = getTrackLoops(toTrack)
+
+  doc.transact(() => {
+    const cloned = source!.clone() as YLoop
+    cloned.set('startStep', start)
+    fromLoops.delete(fromIdx, 1)
+    toLoops.push([cloned])
+    ensureBarsForSteps(doc, start + length)
+  })
+}
+
 export function resizeLoopRight(
   doc: Y.Doc,
   trackId: string,
